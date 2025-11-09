@@ -1,0 +1,12 @@
+{
+  "_comment": "DEPRECATED: This file is no longer used!",
+  "_comment2": "SMTP settings are now stored in the .env file for security",
+  "_comment3": "Add the following variables to your .env file:",
+  "_comment4": "SMTP_SERVER=smtp.example.com",
+  "_comment5": "SMTP_PORT=587",
+  "_comment6": "SMTP_USE_TLS=true",
+  "_comment7": "SMTP_USERNAME=your-email@example.com",
+  "_comment8": "SMTP_PASSWORD=your-password",
+  "_comment9": "SMTP_FROM_EMAIL=noreply@example.com",
+  "_comment10": "SMTP_FROM_NAME=Meeting Transcriber"
+}

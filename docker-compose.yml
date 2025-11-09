@@ -1,0 +1,145 @@
+services:
+  # FFmpeg service for extracting audio from video
+  ffmpeg-service:
+    build:
+      context: ./services/ffmpeg
+      dockerfile: Dockerfile
+    container_name: meeting-ffmpeg
+    ports:
+      - "8002:8000"
+    volumes:
+      # Path is taken from DATA_PATH environment variable in .env file
+      # Fallback to ./data if variable is not set
+      - ${DATA_PATH:-./data}:/app/data
+    environment:
+      - TZ=Europe/Moscow
+    restart: unless-stopped
+    networks:
+      - meeting-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Transcription service (Faster-Whisper + pyannote.audio)
+  transcription-service:
+    build:
+      context: ./services/transcription
+      dockerfile: Dockerfile
+      args:
+        # If you have GPU, change to: nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+        BASE_IMAGE: python:3.10-slim
+    container_name: meeting-transcription
+    ports:
+      - "8003:8000"
+    volumes:
+      - ${DATA_PATH:-./data}:/app/data
+      - ./models:/app/models  # Cache for Whisper and pyannote models
+      - ./logs:/app/logs
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - WHISPER_MODEL=${WHISPER_MODEL:-medium}
+      - DEVICE=${DEVICE:-cpu}  # cpu or cuda
+      - LANGUAGE=ru
+      - TZ=Europe/Moscow
+    restart: unless-stopped
+    networks:
+      - meeting-net
+    deploy:
+      resources:
+        limits:
+          memory: 8G  # Maximum 8GB RAM for transcription
+        reservations:
+          memory: 4G  # Minimum 4GB RAM
+    # Uncomment for GPU support
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 120s  # Long startup due to model loading
+
+  # PostgreSQL for processing history storage (optional - DISABLED, using JSON file instead)
+  # Uncomment if database is needed
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: meeting-postgres
+  #   environment:
+  #     - POSTGRES_DB=meetings
+  #     - POSTGRES_USER=meeting_user
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me_in_production}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #     - ./init-db:/docker-entrypoint-initdb.d
+  #   ports:
+  #     - "5432:5432"
+  #   restart: unless-stopped
+  #   networks:
+  #     - meeting-net
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U meeting_user -d meetings"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # Redis for queues and caching (optional - DISABLED, not used)
+  # Uncomment if queue system is needed
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: meeting-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   restart: unless-stopped
+  #   networks:
+  #     - meeting-net
+  #   command: redis-server --appendonly yes
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+
+  # Nginx for reverse proxy (optional - DISABLED, scripts connect directly to services)
+  # Uncomment if unified API endpoint is needed
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: meeting-nginx
+  #   ports:
+  #     - "8080:80"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./nginx/logs:/var/log/nginx
+  #   depends_on:
+  #     - ffmpeg-service
+  #     - transcription-service
+  #   restart: unless-stopped
+  #   networks:
+  #     - meeting-net
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+networks:
+  meeting-net:
+    driver: bridge
+
+# Volumes for optional services (commented out)
+# volumes:
+#   postgres-data:
+#     driver: local
+#   redis-data:
+#     driver: local
+
+# For Windows: ensure Docker Desktop has access to project folders
+# Settings → Resources → File Sharing → add project path

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyRecV Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>⚙️ MyRecV Settings</h1>
+      <p>Configure recording and saving preferences</p>
+    </header>
+
+    <main class="content">
+      <!-- Email for receiving results -->
+      <section class="section">
+        <h2>📧 Email for receiving results</h2>
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Email address</strong>
+            <p>Provide the email where the transcript and meeting minutes will be sent after processing</p>
+          </div>
+          <div class="setting-control">
+            <input
+              type="email"
+              class="text-input"
+              id="userEmail"
+              placeholder="your.email@example.com"
+              autocomplete="email">
+            <span class="error-message" id="userEmailError"></span>
+            <p class="hint">The email is embedded into the file name as _mmmail(email)_ for server-side processing</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Save directory -->
+      <section class="section">
+        <h2>📁 Save location</h2>
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Folder for recordings</strong>
+            <p>Select the directory where recordings will be stored</p>
+          </div>
+          <div class="setting-control">
+            <button class="btn btn-primary" id="selectDirectoryBtn">
+              Choose folder
+            </button>
+            <div class="selected-path" id="selectedPath">
+              No folder selected. Files will be saved via Downloads.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Audio format -->
+      <section class="section">
+        <h2>🎵 Audio format</h2>
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Format for "Audio only" mode</strong>
+            <p>Select the output format when recording audio-only sessions</p>
+          </div>
+          <div class="setting-control">
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="audioFormat" value="wav" id="audioFormatWav">
+                <span>
+                  <strong>.wav</strong> (uncompressed PCM)
+                  <br>
+                  <small>Largest size, best quality, ideal for processing</small>
+                </span>
+              </label>
+
+              <label class="radio-label">
+                <input type="radio" name="audioFormat" value="webm" id="audioFormatWebm">
+                <span>
+                  <strong>.webm</strong> (Opus codec)
+                  <br>
+                  <small>Compressed, smaller size, may require conversion</small>
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Video quality -->
+      <section class="section">
+        <h2>🎬 Video quality</h2>
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Video resolution</strong>
+            <p>Choose the recording resolution. Higher quality produces larger files</p>
+          </div>
+          <div class="setting-control">
+            <select class="select-input" id="videoQuality">
+              <option value="720p">HD 720p (1280x720)</option>
+              <option value="1080p">Full HD 1080p (1920x1080)</option>
+              <option value="2k">2K (2560x1440)</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Recording history -->
+      <section class="section">
+        <h2>📜 Recording history</h2>
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Show history in the popup</strong>
+            <p>Display the last 10 recordings inside the extension UI</p>
+          </div>
+          <div class="setting-control">
+            <label class="toggle-label">
+              <input type="checkbox" id="showHistory">
+              <span class="toggle-switch"></span>
+              <span class="toggle-text">Enabled</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- NextCloud integration -->
+      <section class="section">
+        <h2>☁️ NextCloud integration</h2>
+
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Enable NextCloud</strong>
+            <p>Automatically upload recordings to NextCloud in addition to local storage</p>
+          </div>
+          <div class="setting-control">
+            <label class="toggle-label">
+              <input type="checkbox" id="nextcloudEnabled">
+              <span class="toggle-switch"></span>
+              <span class="toggle-text">Enabled</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="nextcloud-settings hidden" id="nextcloudSettings">
+          <!-- Server URL -->
+          <div class="setting-group">
+            <div class="setting-description">
+              <strong>NextCloud server URL</strong>
+              <p>Enter the full URL of your NextCloud instance (including https://)</p>
+            </div>
+            <div class="setting-control">
+              <input
+                type="url"
+                class="text-input"
+                id="nextcloudUrl"
+                placeholder="https://nextcloud.example.com"
+                autocomplete="off">
+              <span class="error-message" id="nextcloudUrlError"></span>
+            </div>
+          </div>
+
+          <!-- Username -->
+          <div class="setting-group">
+            <div class="setting-description">
+              <strong>Username</strong>
+              <p>Your NextCloud login</p>
+            </div>
+            <div class="setting-control">
+              <input
+                type="text"
+                class="text-input"
+                id="nextcloudUsername"
+                placeholder="user@example.com"
+                autocomplete="username">
+            </div>
+          </div>
+
+          <!-- Authentication type -->
+          <div class="setting-group">
+            <div class="setting-description">
+              <strong>Authentication type</strong>
+              <p>App Password is recommended (Settings → Security in NextCloud)</p>
+            </div>
+            <div class="setting-control">
+              <div class="radio-group-horizontal">
+                <label class="radio-label-compact">
+                  <input type="radio" name="nextcloudAuthType" value="token" id="authTypeToken">
+                  <span>App Password (Token)</span>
+                </label>
+                <label class="radio-label-compact">
+                  <input type="radio" name="nextcloudAuthType" value="password" id="authTypePassword">
+                  <span>Password</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- App Password / Token -->
+          <div class="setting-group" id="tokenGroup">
+            <div class="setting-description">
+              <strong>App Password (Token)</strong>
+              <p>Create an App Password in NextCloud: Settings → Security → App passwords</p>
+            </div>
+            <div class="setting-control">
+              <input
+                type="password"
+                class="text-input"
+                id="nextcloudToken"
+                placeholder="xxxx-xxxx-xxxx-xxxx"
+                autocomplete="new-password">
+              <button class="btn-link" id="showTokenBtn">👁️ Show</button>
+            </div>
+          </div>
+
+          <!-- Password -->
+          <div class="setting-group hidden" id="passwordGroup">
+            <div class="setting-description">
+              <strong>Password</strong>
+              <p>Your regular NextCloud password (not recommended)</p>
+            </div>
+            <div class="setting-control">
+              <input
+                type="password"
+                class="text-input"
+                id="nextcloudPassword"
+                placeholder="Password"
+                autocomplete="new-password">
+              <button class="btn-link" id="showPasswordBtn">👁️ Show</button>
+            </div>
+          </div>
+
+          <!-- Base folder -->
+          <div class="setting-group">
+            <div class="setting-description">
+              <strong>Save folder</strong>
+              <p>Path to the NextCloud folder (created automatically if missing)</p>
+            </div>
+            <div class="setting-control">
+              <input
+                type="text"
+                class="text-input"
+                id="nextcloudBasePath"
+                placeholder="/Recordings/"
+                value="/Recordings/">
+            </div>
+          </div>
+
+          <!-- Additional options -->
+          <div class="setting-group">
+            <div class="setting-description">
+              <strong>Extra features</strong>
+            </div>
+            <div class="setting-control">
+              <div class="checkbox-group-vertical">
+                <label class="checkbox-label-compact">
+                  <input type="checkbox" id="nextcloudGenerateLink">
+                  <span>Generate a public link after upload</span>
+                </label>
+                <label class="checkbox-label-compact">
+                  <input type="checkbox" id="nextcloudSyncHistory">
+                  <span>Sync recording history across devices</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Connection test -->
+          <div class="setting-group">
+            <div class="setting-description">
+              <strong>Connection test</strong>
+              <p>Validate your configuration before saving</p>
+            </div>
+            <div class="setting-control">
+              <button class="btn btn-secondary" id="testConnectionBtn">
+                🔌 Test connection
+              </button>
+              <div class="connection-status" id="connectionStatus"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Hotkeys -->
+      <section class="section">
+        <h2>⌨️ Hotkeys</h2>
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Keyboard shortcuts</strong>
+            <p>Configure hotkeys for quick recording control</p>
+          </div>
+          <div class="setting-control">
+            <div class="shortcuts-list">
+              <div class="shortcut-item">
+                <span class="shortcut-label">Start recording:</span>
+                <code class="shortcut-key">Ctrl+Shift+R</code>
+              </div>
+              <div class="shortcut-item">
+                <span class="shortcut-label">Stop recording:</span>
+                <code class="shortcut-key">Ctrl+Shift+S</code>
+              </div>
+            </div>
+            <button class="btn btn-secondary" id="configureShortcutsBtn">
+              Configure hotkeys
+            </button>
+            <p class="hint">Opens the Chrome shortcut settings page</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- About -->
+      <section class="section">
+        <h2>ℹ️ About</h2>
+        <div class="about-content">
+          <p><strong>MyRecV v1.0.0</strong></p>
+          <p>Screen and audio recorder with task metadata</p>
+          <p>Part of the Meeting Transcriber project</p>
+          <div class="about-links">
+            <a href="https://github.com/meeting-transcriber" target="_blank">GitHub</a>
+            <a href="#" id="reportIssueLink">Report an issue</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <button class="btn btn-success" id="saveBtn">Save settings</button>
+      <div class="save-status" id="saveStatus"></div>
+    </footer>
+  </div>
+
+  <script src="options.js" type="module"></script>
+</body>
+</html>

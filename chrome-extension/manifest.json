@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "MyRecV - Screen & Audio Recorder",
+  "version": "1.0.0",
+  "description": "Screen and audio recording for meeting transcription. Saves files with task metadata.",
+  "author": "Meeting Transcriber Team",
+
+  "permissions": [
+    "storage",
+    "notifications",
+    "offscreen",
+    "downloads",
+    "activeTab",
+    "tabCapture"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+
+  "action": {
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    },
+    "default_title": "MyRecV - Start Recording"
+  },
+
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+
+  "options_page": "options/options.html",
+
+  "commands": {
+    "start-recording": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+R",
+        "mac": "Command+Shift+R"
+      },
+      "description": "Start screen recording"
+    },
+    "stop-recording": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Stop current recording"
+    }
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

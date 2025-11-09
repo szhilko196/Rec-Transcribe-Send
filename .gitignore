@@ -1,0 +1,85 @@
+# Environment variables
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Data directories
+data/input/*
+data/audio/*
+data/transcripts/*
+data/results/*
+!data/input/.gitkeep
+!data/audio/.gitkeep
+!data/transcripts/.gitkeep
+!data/results/.gitkeep
+
+# Processed videos database
+data/processed_videos.json
+
+# ML Models cache
+models/*
+!models/.gitkeep
+
+# Logs
+*.log
+logs/
+data/*.log
+
+# Docker
+.dockerignore
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+temp/
+
+# Chrome Extension
+chrome-extension/node_modules/
+chrome-extension/package-lock.json
+
+# SMTP config (deprecated - use .env)
+config/smtp_config.json

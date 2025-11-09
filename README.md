@@ -1,10 +1,10 @@
-# Meeting Transcriber - Automated Meeting Transcription System
+# Rec-Transcribe-Send - Automated Meeting Transcription System
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.10-blue.svg)
 
-**Meeting Transcriber** is an automated system for processing meeting recordings with support for Russian and English languages. The system extracts audio from video files, transcribes speech to text, identifies speakers, and generates meeting summaries and protocols.
+**Rec-Transcribe-Send** is an automated system for processing meeting recordings with support for Russian and English languages. The system extracts audio from video files, transcribes speech to text, identifies speakers, and generates meeting summaries and protocols.
 
 ## 🎯 Key Features
 
@@ -88,8 +88,8 @@ flowchart TB
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/meeting-transcriber.git
-   cd meeting-transcriber
+   git clone https://github.com/szhilko196/Rec-Transcribe-Send.git
+   cd Rec-Transcribe-Send
    ```
 
 2. **Configure environment variables**

@@ -1,0 +1,18 @@
+# Core
+pydantic>=2.5.0
+python-dotenv>=1.0.0
+
+# Email processing
+imapclient>=2.3.1
+icalendar>=5.0.11
+python-dateutil>=2.8.2
+
+# Browser automation
+playwright>=1.40.0
+
+# Scheduling
+APScheduler>=3.10.4
+
+# Optional: API mode (if MAC_ENABLE_API=true in .env)
+# fastapi>=0.104.0
+# uvicorn[standard]>=0.24.0

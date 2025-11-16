@@ -1,0 +1,9 @@
+2025/11/16-13:05:41.459 3a0c Reusing MANIFEST C:\prj\Rec-Transcribe-Send\services\meeting-autocapture\data\browser_profiles\telemost_yandex\Default\Local Storage\leveldb/MANIFEST-000001
+2025/11/16-13:05:41.464 3a0c Recovering log #45
+2025/11/16-13:05:41.467 3a0c Reusing old log C:\prj\Rec-Transcribe-Send\services\meeting-autocapture\data\browser_profiles\telemost_yandex\Default\Local Storage\leveldb/000045.log 
+2025/11/16-13:05:59.521 51d4 Level-0 table #50: started
+2025/11/16-13:05:59.534 51d4 Level-0 table #50: 11369 bytes OK
+2025/11/16-13:05:59.539 51d4 Delete type=0 #45
+2025/11/16-13:06:41.477 51d4 Level-0 table #52: started
+2025/11/16-13:06:41.485 51d4 Level-0 table #52: 13215 bytes OK
+2025/11/16-13:06:41.490 51d4 Delete type=0 #49

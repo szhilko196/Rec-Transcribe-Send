@@ -45,6 +45,14 @@ async function init() {
   // Listen for messages from popup and other components
   chrome.runtime.onMessage.addListener(handleMessage);
 
+  // Listen for external messages (from Playwright/automation)
+  chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+    console.log('[MyRecV SW] External message received from:', sender.url);
+    console.log('[MyRecV SW] External message:', message);
+    // Use the same handler for both internal and external messages
+    return handleMessage(message, sender, sendResponse);
+  });
+
   // Listen for keyboard shortcut commands
   chrome.commands.onCommand.addListener(handleCommand);
 
@@ -176,6 +184,30 @@ function handleMessage(message, sender, sendResponse) {
           // Skip logging the response to keep the console clean
           sendResponse(response);
           return; // Выходим сразу
+
+        // CDP Support: Start recording from external automation (Playwright)
+        case 'START_RECORDING':
+          console.log('[MyRecV SW] CDP: Start recording request received');
+          console.log('[MyRecV SW] CDP: Message data:', message);
+
+          // Extract meeting data from message
+          const startData = {
+            taskNumber: message.taskNumber || 'AUTO',
+            description: message.description || 'Automated Meeting Recording',
+            audioOnly: message.audioOnly || false
+          };
+
+          console.log('[MyRecV SW] CDP: Starting recording with data:', startData);
+          response = await startRecording(startData);
+          console.log('[MyRecV SW] CDP: Recording started, response:', response);
+          break;
+
+        // CDP Support: Stop recording from external automation (Playwright)
+        case 'STOP_RECORDING':
+          console.log('[MyRecV SW] CDP: Stop recording request received');
+          response = await stopRecording();
+          console.log('[MyRecV SW] CDP: Recording stopped, response:', response);
+          break;
 
         default:
           response = { success: false, error: 'Unknown action' };

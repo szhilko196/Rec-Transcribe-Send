@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MyRecV - Screen & Audio Recorder",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Screen and audio recording for meeting transcription. Saves files with task metadata.",
   "author": "Meeting Transcriber Team",
 
@@ -62,5 +62,13 @@
       "resources": ["assets/*"],
       "matches": ["<all_urls>"]
     }
-  ]
+  ],
+
+  "externally_connectable": {
+    "matches": [
+      "http://localhost/*",
+      "https://localhost/*",
+      "<all_urls>"
+    ]
+  }
 }

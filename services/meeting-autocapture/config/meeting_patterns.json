@@ -1,0 +1,68 @@
+{
+  "patterns": [
+    {
+      "name": "mra.gazprombank.ru",
+      "regex": "mra\\.gazprombank\\.ru\\/meeting\\/[\\w\\-]+\\?secret=[\\w\\-\\=]+",
+      "priority": 1,
+      "requires_auth": false,
+      "requires_password": false,
+      "profile_name": "gpb_mra"
+    },
+    {
+      "name": "jvc.inspider.ru",
+      "regex": "jvc\\.inspider\\.ru\\/[\\w\\-]+",
+      "priority": 2,
+      "requires_auth": false,
+      "requires_password": false,
+      "profile_name": "jvc_inspider"
+    },
+    {
+      "name": "gpb.video",
+      "regex": "gpb\\.video\\/[\\w\\-\\/\\?\\=]+",
+      "priority": 3,
+      "requires_auth": false,
+      "requires_password": false,
+      "profile_name": "gpb_video"
+    },
+    {
+      "name": "meeting.psbank.ru",
+      "regex": "meeting\\.psbank\\.ru\\/[\\w\\-\\/]+",
+      "priority": 4,
+      "requires_auth": false,
+      "requires_password": true,
+      "profile_name": "psbank"
+    },
+    {
+      "name": "zoom",
+      "regex": "zoom\\.us\\/j\\/\\d+",
+      "priority": 5,
+      "requires_auth": false,
+      "requires_password": false,
+      "profile_name": "zoom"
+    },
+    {
+      "name": "webex",
+      "regex": "webex\\.com\\/.*\\/j\\.php",
+      "priority": 6,
+      "requires_auth": false,
+      "requires_password": false,
+      "profile_name": "webex"
+    },
+    {
+      "name": "google_meet",
+      "regex": "meet\\.google\\.com\\/[\\w\\-\\/]+",
+      "priority": 7,
+      "requires_auth": true,
+      "requires_password": false,
+      "profile_name": "google_meet"
+    },
+    {
+      "name": "telemost.yandex",
+      "regex": "telemost\\.yandex\\.ru\\/[\\w\\-\\/]+",
+      "priority": 8,
+      "requires_auth": true,
+      "requires_password": false,
+      "profile_name": "telemost"
+    }
+  ]
+}

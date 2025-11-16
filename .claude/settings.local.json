@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(dir:*)",
+      "Bash(venv/Scripts/playwright.exe install:*)",
+      "Bash(venv/Scripts/python.exe:*)",
+      "Bash(findstr:*)",
+      "Bash(cat:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -79,10 +79,13 @@ class MeetingScheduler:
         """
         Check if any meetings need to join (runs every minute)
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now().astimezone()  # Get current time in local timezone
         pending_dir = "data/meetings/pending"
 
+        self.logger.debug(f"Checking meetings at {now}")
+
         if not os.path.exists(pending_dir):
+            self.logger.warning(f"Pending directory does not exist: {pending_dir}")
             return
 
         for filename in os.listdir(pending_dir):
@@ -93,19 +96,28 @@ class MeetingScheduler:
                 filepath = os.path.join(pending_dir, filename)
                 meeting = self._load_meeting_from_file(filepath)
 
-                if not meeting or meeting.status != 'pending':
+                if not meeting:
+                    self.logger.warning(f"Could not load meeting from {filename}")
+                    continue
+
+                if meeting.status != 'pending':
+                    self.logger.debug(f"Skipping meeting {meeting.subject} - status is {meeting.status}")
                     continue
 
                 # Calculate join time (N minutes before start)
                 join_time = meeting.start_time - timedelta(minutes=self.pre_join_minutes)
 
+                self.logger.debug(f"Meeting {meeting.subject}: now={now}, join_time={join_time}, start_time={meeting.start_time}")
+
                 # Check if it's time to join
                 if now >= join_time:
                     self.logger.info(f"Time to join meeting: {meeting.subject}")
                     self.trigger_join(meeting)
+                else:
+                    self.logger.debug(f"Not yet time to join {meeting.subject} (need to wait {(join_time - now).total_seconds():.0f} seconds)")
 
             except Exception as e:
-                self.logger.error(f"Error checking meeting {filename}: {e}")
+                self.logger.error(f"Error checking meeting {filename}: {e}", exc_info=True)
 
     def trigger_join(self, meeting: MeetingInvitation):
         """

@@ -6,7 +6,19 @@
       "Bash(venv/Scripts/playwright.exe install:*)",
       "Bash(venv/Scripts/python.exe:*)",
       "Bash(findstr:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(nul)",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(tasklist:*)",
+      "Bash(python:*)",
+      "Bash(timeout /t 5)",
+      "Bash(timeout /t 70)",
+      "Bash(taskkill:*)",
+      "Bash(cmd /c \"cd services\\meeting-autocapture\\data\\meetings && dir /b\")",
+      "Bash(cmd /c \"cd services\\meeting-autocapture && type logs\\meeting_autocapture.log | findstr /C:\"final123\" /C:\"2025-11-17 22:3\"\")",
+      "Bash(cmd /c \"taskkill /F /IM python.exe\")",
+      "Bash(cmd /c \"timeout /t 2 /nobreak >nul && tasklist | findstr python\")",
+      "Bash(cmd /c \"wmic process where \"\"name=''python.exe'' and commandline like ''%meeting-autocapture%''\"\" get processid,commandline\")"
     ],
     "deny": [],
     "ask": []

@@ -3,7 +3,9 @@ Platform Handlers Package
 Exports all platform-specific handlers and get_handler() function
 """
 from .base_handler import BasePlatformHandler
+from .mra_gazprombank import MRAGazprombankHandler
 from .gpb_video import GPBVideoHandler
+from .jvc_inspider import JVCInspiderHandler
 from .psbank_meeting import PSBankMeetingHandler
 from .zoom import ZoomHandler
 from .webex import WebexHandler
@@ -13,7 +15,9 @@ from .telemost_yandex import TelemostYandexHandler
 
 # Mapping of platform names to handler classes
 HANDLERS = {
+    'mra.gazprombank.ru': MRAGazprombankHandler,  # Priority 1
     'gpb.video': GPBVideoHandler,
+    'jvc.inspider.ru': JVCInspiderHandler,
     'meeting.psbank.ru': PSBankMeetingHandler,
     'zoom': ZoomHandler,
     'webex': WebexHandler,
@@ -49,7 +53,9 @@ def get_handler(platform: str) -> BasePlatformHandler:
 
 __all__ = [
     'BasePlatformHandler',
+    'MRAGazprombankHandler',
     'GPBVideoHandler',
+    'JVCInspiderHandler',
     'PSBankMeetingHandler',
     'ZoomHandler',
     'WebexHandler',

@@ -14,12 +14,12 @@ Automated meeting capture service that monitors email for meeting invitations, a
 
 ## Supported Platforms
 
-1. **gpb.video** (Priority 1)
-2. **meeting.psbank.ru** (Priority 2)
-3. **Zoom**
-4. **Cisco Webex**
-5. **Google Meet**
-6. **Yandex Telemost**
+1. **mra_gazprombank_ru** (Ready and tested)
+2. **meeting.psbank.ru** (not ready)
+3. **Zoom** (not ready)
+4. **Cisco Webex** (not ready)
+5. **Google Meet** (not ready)
+6. **Yandex Telemost** (Ready and tested)
 
 ## Architecture
 

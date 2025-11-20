@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 # Processing configuration
 SUPPORTED_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv'}
-ORCHESTRATOR_SCRIPT = Path("scripts/orchestrator.py")
+ORCHESTRATOR_SCRIPT = Path("services/transcription_orchestrator/orchestrator.py")
 
 # File stabilization timeout (seconds) - wait until file is fully copied
 FILE_STABLE_TIMEOUT = 5

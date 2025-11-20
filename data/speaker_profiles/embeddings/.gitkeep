@@ -1,0 +1,2 @@
+# This file ensures the embeddings directory is tracked in git
+# Cached speaker embeddings (.npy files) will be stored here

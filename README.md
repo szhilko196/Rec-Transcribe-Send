@@ -167,7 +167,7 @@ flowchart TB
 
    **Linux/Mac:**
    ```bash
-   python scripts/watch_input_folder.py
+   python services/transcription_orchestrator/watch_input_folder.py
    ```
 
 5. **Add video file**

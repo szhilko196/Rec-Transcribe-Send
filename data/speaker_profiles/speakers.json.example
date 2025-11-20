@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "speakers": [
+    {
+      "id": "example_speaker",
+      "name": "Example Speaker",
+      "audio_samples": [
+        "example_speaker/sample_01.wav",
+        "example_speaker/sample_02.wav",
+        "example_speaker/sample_03.wav"
+      ],
+      "embedding_file": "embeddings/example_speaker_embed.npy",
+      "created_at": "2025-01-18T10:00:00Z",
+      "metadata": {
+        "role": "Team Member",
+        "department": "Engineering",
+        "email": "speaker@company.com"
+      }
+    }
+  ],
+  "settings": {
+    "min_segment_duration": 1.0,
+    "embedding_aggregation": "mean",
+    "normalization": "cosine"
+  }
+}

@@ -71,11 +71,26 @@ if errorlevel 1 (
     pip install anthropic
 )
 
+REM Check SpeechBrain (for speaker recognition feature)
+python -c "import speechbrain" >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] SpeechBrain not found. Speaker recognition will not be available.
+    echo [INFO] To enable speaker recognition, install dependencies:
+    echo [INFO]   pip install -r services\transcription_orchestrator\requirements.txt
+)
+
 REM Create necessary folders
 if not exist "!DATA_PATH!\input" mkdir "!DATA_PATH!\input"
 if not exist "!DATA_PATH!\results" mkdir "!DATA_PATH!\results"
 if not exist "!DATA_PATH!\audio" mkdir "!DATA_PATH!\audio"
 if not exist "!DATA_PATH!\transcripts" mkdir "!DATA_PATH!\transcripts"
+
+REM Create speaker_profiles directory for speaker recognition
+if not exist "!DATA_PATH!\speaker_profiles" (
+    mkdir "!DATA_PATH!\speaker_profiles"
+    mkdir "!DATA_PATH!\speaker_profiles\embeddings"
+    echo [INFO] Created speaker_profiles directory
+)
 
 echo.
 echo [OK] All checks passed!
@@ -94,7 +109,7 @@ echo ===========================================================================
 echo.
 
 REM Start monitoring
-python scripts\watch_input_folder.py
+python services\transcription_orchestrator\watch_input_folder.py
 
 echo.
 echo ================================================================================

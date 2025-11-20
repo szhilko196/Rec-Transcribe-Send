@@ -1,0 +1,22 @@
+# Orchestrator Dependencies
+# ========================
+
+# Existing dependencies (already used by orchestrator)
+anthropic>=0.18.0
+python-dotenv>=1.0.0
+watchdog>=3.0.0
+
+# Speaker Recognition Dependencies (NEW)
+# ======================================
+# Note: Using specific versions for compatibility
+speechbrain>=1.0.0
+torch>=2.1.0,<2.5.0
+torchaudio>=2.1.0,<2.5.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Additional libraries that may be needed by SpeechBrain
+# (these are typically installed as dependencies, but listed for clarity)
+sentencepiece>=0.1.99
+transformers>=4.30.0
+hyperpyyaml>=1.2.0

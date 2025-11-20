@@ -535,7 +535,7 @@ For issues or questions:
 - Implementation Plan: `../../MeetingAutoCapture_plan.md`
 - ffmpeg Documentation: https://ffmpeg.org/documentation.html
 - WebM Format: https://www.webmproject.org/
-- Orchestrator: `../../scripts/orchestrator.py`
+- Orchestrator: `../../services/transcription_orchestrator/orchestrator.py`
 
 ## Recent Updates
 

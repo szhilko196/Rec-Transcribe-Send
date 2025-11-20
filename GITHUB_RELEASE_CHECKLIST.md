@@ -53,8 +53,8 @@ This checklist helps prepare the project for GitHub publication.
 ### Medium Priority - Developer Documentation
 
 4. **Python Scripts**
-   - [ ] Translate docstrings in `scripts/orchestrator.py`
-   - [ ] Translate docstrings in `scripts/watch_input_folder.py`
+   - [ ] Translate docstrings in `services/transcription_orchestrator/orchestrator.py`
+   - [ ] Translate docstrings in `services/transcription_orchestrator/watch_input_folder.py`
    - [ ] Translate print() messages and comments
 
 5. **Service Code**

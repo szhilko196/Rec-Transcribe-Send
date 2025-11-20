@@ -19,7 +19,7 @@ A system that continuously monitors the `data/input/` folder to process meeting 
 ### 1. Start monitoring
 
 ```bash
-python scripts/watch_input_folder.py
+python services/transcription_orchestrator/watch_input_folder.py
 ```
 
 The script runs in the background and will:
@@ -107,10 +107,10 @@ copy meeting.mp4 data\input\meeting_copy2.mp4
 **Scenario 2**: Monitoring restart
 ```bash
 # Run 1
-python scripts/watch_input_folder.py  # processed meeting.mp4
+python services/transcription_orchestrator/watch_input_folder.py  # processed meeting.mp4
 
 # Run 2
-python scripts/watch_input_folder.py  # will skip meeting.mp4 (already in DB)
+python services/transcription_orchestrator/watch_input_folder.py  # will skip meeting.mp4 (already in DB)
 ```
 
 **Scenario 3**: New video with the same name
@@ -128,7 +128,7 @@ copy different_meeting.mp4 data\input\meeting.mp4
 2. Create Task → Triggers → "At startup"
 3. Actions → "Start a program"
    - Program: `C:\Users\YourUser\AppData\Local\Programs\Python\Python313\python.exe`
-   - Arguments: `C:\prj\meeting-transcriber\scripts\watch_input_folder.py`
+   - Arguments: `C:\prj\meeting-transcriber\services\transcription_orchestrator\watch_input_folder.py`
    - Start in: `C:\prj\meeting-transcriber`
 
 ### Linux/Mac (systemd):
@@ -144,7 +144,7 @@ After=network.target
 Type=simple
 User=your_username
 WorkingDirectory=/path/to/meeting-transcriber
-ExecStart=/usr/bin/python3 /path/to/meeting-transcriber/scripts/watch_input_folder.py
+ExecStart=/usr/bin/python3 /path/to/meeting-transcriber/services/transcription_orchestrator/watch_input_folder.py
 Restart=always
 
 [Install]

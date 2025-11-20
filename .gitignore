@@ -86,3 +86,10 @@ chrome-extension/package-lock.json
 
 # SMTP config (deprecated - use .env)
 config/smtp_config.json
+
+# My Internal Files
+Roadmap.md
+CodeReview_plan.md
+CodeReview.md
+SpeakerRecognition_plan.md
+MeetingAutoCapture_plan.md

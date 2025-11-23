@@ -47,6 +47,7 @@ Data Flow: Email → Browser Join → Record → ./data/input/ → audio/ → tr
 - **FFmpeg**: Audio extraction (16kHz mono PCM WAV)
 - **Faster-Whisper**: Optimized speech-to-text (4x faster than vanilla Whisper)
 - **pyannote.audio**: Speaker diarization with temporal segmentation
+- **SpeechBrain**: Speaker recognition with ECAPA-TDNN embeddings (optional)
 - **Claude API**: Document generation (summary.md, protocol.md)
 - **N8n**: Visual workflow orchestration (already installed on host)
 
@@ -70,10 +71,15 @@ Data Flow: Email → Browser Join → Record → ./data/input/ → audio/ → tr
 2. Transcription service processes:
    - Whisper transcribes speech → text segments with timestamps
    - pyannote identifies speakers → (start, end, speaker_id) tuples
-   - Merge transcription + diarization → structured JSON
-3. Claude API generates summary and protocol documents
-4. Save final documents to `/data/results/`
-5. Email protocol to sender (if `_mmmail(email)_` in filename)
+   - Merge transcription + diarization → structured JSON with generic labels (SPEAKER_00, SPEAKER_01, etc.)
+3. **Speaker Recognition (optional)**: Identifies known speakers by voice
+   - Loads enrolled speaker profiles from `data/speaker_profiles/`
+   - Generates voice embeddings using SpeechBrain ECAPA-TDNN
+   - Matches speakers using cosine similarity
+   - Replaces generic labels with real names (SPEAKER_00 → "Иван Петров")
+4. Claude API generates summary and protocol documents (with real speaker names if recognized)
+5. Save final documents to `/data/results/`
+6. Email protocol to sender (if `_mmmail(email)_` in filename)
 
 ## Development Commands
 
@@ -153,6 +159,138 @@ playwright install chromium
 cp config/.env.example .env
 # Edit .env with your credentials
 python src/main.py  # Run the service
+```
+
+## Speaker Recognition Setup
+
+The speaker recognition feature identifies known speakers in meetings by matching their voice characteristics. When enabled, generic labels (SPEAKER_00, SPEAKER_01) are replaced with real names in transcripts, summaries, and protocols.
+
+### Prerequisites
+
+1. **Install dependencies** (if not already done):
+```bash
+pip install -r services/transcription_orchestrator/requirements.txt
+```
+
+2. **Enable speaker recognition** in `.env`:
+```env
+ENABLE_SPEAKER_RECOGNITION=true
+RECOGNITION_THRESHOLD=0.75
+SPEAKER_PROFILES_PATH=./data/speaker_profiles
+```
+
+### Enrolling Speakers
+
+#### Step 1: Prepare Audio Samples
+
+Extract 3-5 clean speech samples (5-10 seconds each) from previous meetings:
+
+```bash
+# Interactive extraction tool
+python tools/extract_speaker_samples.py --interactive
+
+# Or extract manually with ffmpeg
+ffmpeg -i meeting.wav -ss 00:05:30 -t 7 -ar 16000 -ac 1 sample_01.wav
+```
+
+#### Step 2: Initialize Speaker Database
+
+```bash
+# Create speakers.json (first time only)
+python services/transcription_orchestrator/manage_speakers.py --init
+```
+
+#### Step 3: Add Speaker
+
+```bash
+python services/transcription_orchestrator/manage_speakers.py \
+    --add ivan_petrov \
+    --name "Иван Петров" \
+    --samples "ivan_petrov/sample_01.wav,ivan_petrov/sample_02.wav,ivan_petrov/sample_03.wav" \
+    --role "Project Manager" \
+    --department "Engineering"
+```
+
+#### Step 4: Validate Profiles
+
+```bash
+python services/transcription_orchestrator/manage_speakers.py --validate
+```
+
+### Managing Speaker Profiles
+
+```bash
+# List all enrolled speakers
+python services/transcription_orchestrator/manage_speakers.py --list
+
+# Remove a speaker
+python services/transcription_orchestrator/manage_speakers.py --remove ivan_petrov
+
+# Validate speakers.json
+python services/transcription_orchestrator/manage_speakers.py --validate
+```
+
+### Testing Speaker Recognition
+
+```bash
+# Test recognition system
+python services/transcription_orchestrator/recognize.py
+
+# Process a meeting with recognition enabled
+python services/transcription_orchestrator/orchestrator.py data/input/test_meeting.avi
+```
+
+### Configuration Options
+
+- **ENABLE_SPEAKER_RECOGNITION**: Enable/disable feature (default: `false`)
+- **RECOGNITION_THRESHOLD**: Confidence threshold 0.0-1.0 (default: `0.75`)
+  - **0.65**: Lenient (more recognitions, possible false positives)
+  - **0.75**: Balanced (recommended)
+  - **0.85**: Strict (fewer false positives, more unrecognized)
+- **SPEAKER_RECOGNITION_DEVICE**: Device for recognition inference (default: falls back to `DEVICE`)
+  - **cpu**: CPU processing (slower but works everywhere)
+  - **cuda**: GPU processing (3-4x faster, requires CUDA-capable GPU)
+- **SPEAKER_PROFILES_PATH**: Path to speaker profiles directory
+
+### Troubleshooting
+
+**Low Recognition Accuracy**:
+- Add more audio samples (5-7 samples per speaker)
+- Use cleaner audio with minimal background noise
+- Ensure samples contain only one speaker
+
+**False Positives** (wrong names assigned):
+- Increase `RECOGNITION_THRESHOLD` to 0.80 or 0.85
+- Add more diverse samples to improve speaker discrimination
+
+**No Speakers Recognized**:
+- Check that `ENABLE_SPEAKER_RECOGNITION=true`
+- Verify `speakers.json` exists and is valid
+- Lower threshold to 0.65 or 0.70
+- Check orchestrator logs for error messages
+
+**Performance**:
+- First run downloads SpeechBrain model (~500MB)
+- Embeddings are cached for faster subsequent runs
+- Recognition adds ~5-10 minutes for 1-hour meeting (CPU)
+- Use `DEVICE=cuda` for 3-4x faster processing (requires GPU)
+
+### File Structure
+
+```
+data/speaker_profiles/
+├── speakers.json              # Speaker database
+├── embeddings/                # Cached embeddings (.npy files)
+│   ├── ivan_petrov_embed.npy
+│   └── maria_ivanova_embed.npy
+├── ivan_petrov/              # Audio samples
+│   ├── sample_01.wav
+│   ├── sample_02.wav
+│   └── sample_03.wav
+└── maria_ivanova/
+    ├── sample_01.wav
+    ├── sample_02.wav
+    └── sample_03.wav
 ```
 
 ## Implementation Guidelines
@@ -285,6 +423,12 @@ HF_TOKEN=hf_xxxxx                      # HuggingFace token for pyannote
 WHISPER_MODEL=medium                   # Options: tiny/base/small/medium/large-v2
 DEVICE=cpu                             # cpu or cuda (requires GPU setup)
 LANGUAGE=ru                            # Primary language for transcription
+
+# Speaker Recognition (Optional)
+ENABLE_SPEAKER_RECOGNITION=false       # Enable speaker identification by voice
+RECOGNITION_THRESHOLD=0.75             # Confidence threshold (0.65=lenient, 0.75=balanced, 0.85=strict)
+SPEAKER_RECOGNITION_DEVICE=cpu         # Device for recognition (cpu/cuda, falls back to DEVICE if not set)
+SPEAKER_PROFILES_PATH=./data/speaker_profiles  # Path to speaker profiles
 
 # Meeting Auto Capture - Email Settings
 MAC_IMAP_HOST=imap.gmail.com

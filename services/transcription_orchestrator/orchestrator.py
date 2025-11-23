@@ -5,8 +5,10 @@ This script:
 1. Creates structured results folder
 2. Extracts audio from video
 3. Performs transcription with diarization
-4. Organizes all files in one folder
-5. Calls Claude API to generate summary and protocol
+4. (Optional) Applies speaker recognition to identify known speakers
+5. Organizes all files in one folder
+6. Calls Claude API to generate summary and protocol
+7. (Optional) Sends results via email
 """
 
 import json
@@ -25,6 +27,14 @@ from datetime import datetime
 from typing import Dict, Optional
 import anthropic
 from dotenv import load_dotenv
+
+# Import speaker recognition module
+try:
+    from recognize import SpeakerRecognizer
+    SPEAKER_RECOGNITION_AVAILABLE = True
+except ImportError as e:
+    print(f"[WARNING] Speaker recognition module not available: {e}")
+    SPEAKER_RECOGNITION_AVAILABLE = False
 
 # Load environment variables from .env
 load_dotenv()
@@ -167,6 +177,71 @@ def load_prompts() -> Dict:
     except Exception as e:
         print(f"[ERROR] Error loading prompts: {e}")
         return {}
+
+
+def load_speaker_recognizer() -> Optional['SpeakerRecognizer']:
+    """
+    Initialize speaker recognizer if enabled
+
+    Returns:
+        SpeakerRecognizer instance or None if disabled/unavailable
+    """
+    # Check if feature is enabled
+    if not os.getenv("ENABLE_SPEAKER_RECOGNITION", "false").lower() == "true":
+        print("[INFO] Speaker recognition disabled")
+        return None
+
+    # Check if module is available
+    if not SPEAKER_RECOGNITION_AVAILABLE:
+        print("[WARNING] Speaker recognition enabled but module not available")
+        return None
+
+    try:
+        profiles_path = Path(os.getenv("SPEAKER_PROFILES_PATH", DATA_DIR / "speaker_profiles"))
+        threshold = float(os.getenv("RECOGNITION_THRESHOLD", "0.75"))
+        # Use SPEAKER_RECOGNITION_DEVICE if set, otherwise fall back to DEVICE
+        device = os.getenv("SPEAKER_RECOGNITION_DEVICE", os.getenv("DEVICE", "cpu"))
+
+        if not profiles_path.exists():
+            print(f"[WARNING] Speaker profiles path not found: {profiles_path}")
+            print("[INFO] Speaker recognition will be skipped")
+            return None
+
+        # Check if speakers.json exists
+        speakers_json = profiles_path / "speakers.json"
+        if not speakers_json.exists():
+            print(f"[INFO] No speakers.json found at: {speakers_json}")
+            print("[INFO] Speaker recognition will be skipped")
+            return None
+
+        print(f"\n[SPEAKER RECOGNITION] Initializing...")
+        print(f"  Profiles path: {profiles_path}")
+        print(f"  Threshold: {threshold}")
+        print(f"  Device: {device}")
+
+        recognizer = SpeakerRecognizer(
+            profiles_path=str(profiles_path),
+            device=device,
+            threshold=threshold
+        )
+
+        # Load speaker profiles
+        count = recognizer.load_profiles()
+
+        if count == 0:
+            print("[WARNING] No valid speaker profiles loaded")
+            print("[INFO] Speaker recognition will be skipped")
+            return None
+
+        print(f"[OK] Speaker recognition ready with {count} speaker(s)")
+        return recognizer
+
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize speaker recognizer: {e}")
+        import traceback
+        traceback.print_exc()
+        print("[INFO] Speaker recognition will be skipped")
+        return None
 
 
 def extract_email_from_filename(filename: str) -> Optional[str]:
@@ -827,6 +902,78 @@ def transcribe_with_speakers(audio_path: Path, result_folder: Path) -> Dict:
     return transcribe_with_speakers_chunked(audio_path, result_folder, chunk_duration_sec=1800)
 
 
+def apply_speaker_recognition(audio_path: Path, transcript_data: Dict, recognizer: Optional['SpeakerRecognizer']) -> Dict:
+    """
+    Apply speaker recognition to transcript (Step 2.5)
+
+    Args:
+        audio_path: Path to audio file
+        transcript_data: Transcript JSON from transcription service
+        recognizer: SpeakerRecognizer instance (or None to skip)
+
+    Returns:
+        Updated transcript with recognized speaker names
+    """
+    if recognizer is None:
+        print("\n[STEP 2.5] Speaker recognition disabled, skipping")
+        return transcript_data
+
+    print(f"\n[STEP 2.5] Applying speaker recognition...")
+
+    try:
+        # Extract segments from transcript
+        transcript_segments = transcript_data.get('transcript', [])
+
+        if not transcript_segments:
+            print("[WARNING] No transcript segments found")
+            return transcript_data
+
+        print(f"  Processing {len(transcript_segments)} segments...")
+
+        # Get speaker map
+        speaker_map = recognizer.recognize_speakers(str(audio_path), transcript_segments)
+
+        # Update transcript with real names
+        recognized_count = 0
+        for segment in transcript_segments:
+            original_speaker = segment.get('speaker', 'UNKNOWN')
+            new_speaker = speaker_map.get(original_speaker, original_speaker)
+
+            if new_speaker != original_speaker:
+                segment['speaker_id'] = original_speaker  # Keep original
+                segment['speaker'] = new_speaker  # Update to real name
+                segment['recognized'] = True
+                recognized_count += 1
+            else:
+                segment['recognized'] = False
+
+        # Update metadata
+        if 'metadata' not in transcript_data:
+            transcript_data['metadata'] = {}
+
+        transcript_data['metadata']['speaker_recognition_enabled'] = True
+        transcript_data['metadata']['recognized_speakers'] = list(set(
+            seg['speaker'] for seg in transcript_segments if seg.get('recognized', False)
+        ))
+        transcript_data['metadata']['unrecognized_speakers'] = list(set(
+            seg['speaker'] for seg in transcript_segments if not seg.get('recognized', False)
+        ))
+
+        print(f"[OK] Speaker recognition complete")
+        print(f"  Recognized speakers: {transcript_data['metadata']['recognized_speakers']}")
+        print(f"  Unrecognized speakers: {transcript_data['metadata']['unrecognized_speakers']}")
+        print(f"  Total segments updated: {recognized_count}")
+
+        return transcript_data
+
+    except Exception as e:
+        print(f"[ERROR] Speaker recognition failed: {e}")
+        import traceback
+        traceback.print_exc()
+        print("[WARNING] Continuing with generic speaker labels")
+        return transcript_data
+
+
 def generate_formatted_transcript(transcript_data: Dict) -> str:
     """
     Create readable transcript version for Claude
@@ -1276,6 +1423,9 @@ def main(video_path_str: str) -> Dict:
         print(f"\n[ERROR] {error_msg}")
         raise ValueError(error_msg)
 
+    # Load speaker recognizer (once at start)
+    recognizer = load_speaker_recognizer()
+
     # Step 0: Create results folder
     result_folder = create_result_folder(video_path)
 
@@ -1288,7 +1438,21 @@ def main(video_path_str: str) -> Dict:
         result_folder
     )
 
-    # Step 3: Generate summary and protocol
+    # Step 2.5: Apply speaker recognition
+    transcript_info['full_transcript'] = apply_speaker_recognition(
+        Path(audio_info['audio_path']),
+        transcript_info['full_transcript'],
+        recognizer
+    )
+
+    # Save updated transcript (with speaker names if recognition was applied)
+    if recognizer is not None:
+        dest_transcript = result_folder / "transcript_full.json"
+        with open(dest_transcript, 'w', encoding='utf-8') as f:
+            json.dump(transcript_info['full_transcript'], f, ensure_ascii=False, indent=2)
+        print(f"[OK] Updated transcript saved with speaker names")
+
+    # Step 3: Generate summary and protocol (now with real names!)
     claude_info = generate_summary_and_protocol(
         transcript_info['full_transcript'],
         result_folder

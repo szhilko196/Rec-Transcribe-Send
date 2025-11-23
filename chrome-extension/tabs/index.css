@@ -279,7 +279,8 @@ body {
   background: #1976D2;
 }
 
-.btn-speaker-rename {
+.btn-speaker-rename,
+.btn-sample-splitter {
   margin-top: 12px;
   font-size: 14px;
   padding: 12px 16px;

@@ -25,6 +25,7 @@ const elements = {
   startBtn: document.getElementById('startBtn'),
   stopBtn: document.getElementById('stopBtn'),
   speakerRenameBtn: document.getElementById('speakerRenameBtn'),
+  sampleSplitterBtn: document.getElementById('sampleSplitterBtn'),
 
   timer: document.getElementById('timer'),
   recordingIndicator: document.getElementById('recordingIndicator'),
@@ -150,6 +151,15 @@ function setupEventListeners() {
     });
   });
   console.log('[MyRecV] Speaker rename button listener attached');
+
+  // Sample splitter button
+  elements.sampleSplitterBtn.addEventListener('click', () => {
+    console.log('[MyRecV] Sample splitter button clicked');
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('sample-splitter/sample-splitter.html')
+    });
+  });
+  console.log('[MyRecV] Sample splitter button listener attached');
 
   // Clear history
   elements.clearHistoryBtn.addEventListener('click', handleClearHistory);

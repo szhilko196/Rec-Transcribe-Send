@@ -45,6 +45,10 @@ htmlcov/
 # Tools directories
 tools/
 
+# Browser profiles (contain cache and sensitive data)
+services/meeting-autocapture/data/browser_profiles/
+**/browser_profiles/
+
 # Data directories
 data/input/*
 data/audio/*

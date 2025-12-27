@@ -298,6 +298,340 @@ data/speaker_profiles/
     └── sample_03.wav
 ```
 
+## RAG Search with RAGFlow
+
+The RAG (Retrieval Augmented Generation) system enables semantic search across all processed meetings using natural language queries. After transcription completes, meetings are automatically indexed in RAGFlow with contextual enrichment, allowing Claude to answer questions like "What did we discuss about project GPB on March 9?" or "Which video file contains discussion about invoices?"
+
+### Architecture
+
+**Stack Components**:
+- **RAGFlow**: Open-source RAG framework (UI + orchestration)
+- **DeepDoc Engine**: Document parsing with structure extraction (built into RAGFlow)
+- **BGE-M3**: Multilingual embedding model (dense + sparse hybrid retrieval)
+- **Infinity**: High-performance vector database with HNSW indexing
+- **bge-reranker-v2-m3**: Two-stage retrieval reranking (top-20 → top-5)
+- **Claude Sonnet 4.5**: LLM for answer generation
+- **Contextual Retrieval**: Anthropic's technique - adds meeting context to chunks before embedding (+30% accuracy)
+
+**Data Flow**:
+```
+Orchestrator completes → Contextual enrichment (Claude API generates context)
+    → Upload to RAGFlow → DeepDoc parsing → BGE-M3 embedding
+    → Infinity storage → User query → Hybrid retrieval → Reranking
+    → Claude generation with citations
+```
+
+### Quick Start
+
+#### Step 1: Deploy RAGFlow Stack
+
+```bash
+# Start RAGFlow services (RAGFlow, MySQL, Redis, Infinity)
+cd services/RAG-search
+docker-compose -f docker-compose.ragflow.yml up -d
+
+# Check services are running
+docker-compose -f docker-compose.ragflow.yml ps
+
+# View logs
+docker-compose -f docker-compose.ragflow.yml logs -f ragflow
+```
+
+#### Step 2: Configure RAGFlow UI
+
+1. **Access RAGFlow UI**: Open http://localhost:9380 in browser
+2. **Login**: Default credentials `admin` / `admin` (change on first login)
+3. **Configure Embedding Model**:
+   - Go to Settings → Models → Embedding
+   - Select `BAAI/bge-m3` (should already be set via environment)
+4. **Configure Vector Engine**:
+   - Settings → Storage → Vector Engine
+   - Select `Infinity` (should already be set)
+5. **Configure Reranker**:
+   - Settings → Models → Reranker
+   - Select `BAAI/bge-reranker-v2-m3`
+6. **Configure LLM**:
+   - Settings → Models → LLM
+   - Add Claude API key (uses `CLAUDE_API_KEY` from .env)
+   - Select `claude-sonnet-4-5-20250929`
+7. **Generate API Key**:
+   - Settings → API Keys → Create New Key
+   - Copy the generated key
+   - Add to `.env`: `RAGFLOW_API_KEY=your-key-here`
+
+#### Step 3: Enable Automatic Indexing
+
+Edit root `.env` file:
+
+```env
+# Enable RAG indexing
+ENABLE_RAG_INDEXING=true
+
+# RAGFlow service URL (default)
+RAGFLOW_URL=http://localhost:9380
+
+# API key from Step 2
+RAGFLOW_API_KEY=your-ragflow-api-key
+
+# Contextual Retrieval (Anthropic technique)
+ENABLE_CONTEXTUAL_RETRIEVAL=true
+CONTEXT_GENERATION_MODEL=claude-sonnet-4-5-20250929
+```
+
+#### Step 4: Process Meetings
+
+Now when orchestrator processes meetings, they'll automatically upload to RAGFlow:
+
+```bash
+# Process a meeting (manual trigger)
+python services/transcription_orchestrator/orchestrator.py data/input/meeting_2025-01-15.avi
+
+# Or use auto-processing (watch_input_folder.py)
+# Just place video files in data/input/ folder
+```
+
+**What happens during upload**:
+1. **Contextual Enrichment**: Claude API generates context for each chunk
+   - Example context: "Встреча: GPB проект - обсуждение счетов, Дата: 2025-03-09, Участники: Иван Петров, Мария Иванова"
+2. **Upload to RAGFlow**: Creates dataset, uploads transcript/summary/protocol
+3. **Parsing & Chunking**: DeepDoc extracts structure, chunks documents
+4. **Embedding**: BGE-M3 generates dense + sparse vectors
+5. **Indexing**: Infinity stores vectors with HNSW index
+6. **Metadata Update**: `metadata.json` updated with `rag_indexed=true`, `ragflow_dataset_id`
+
+### Querying Meetings
+
+#### Via RAGFlow UI
+
+1. **Open RAGFlow UI**: http://localhost:9380
+2. **Select Dataset**: Choose specific meeting or "All Datasets"
+3. **Chat Interface**: Ask questions in natural language (Russian or English)
+
+**Example Queries**:
+```
+- "Что обсудили по проекту GPB 9 марта?"
+- "Какие решения приняли на встрече с партнерами?"
+- "Кто отвечает за расчеты до 15 марта?"
+- "В каком видео обсуждали счета?"
+- "What were the action items from the last meeting?"
+```
+
+**Response includes**:
+- Generated answer based on retrieved context
+- Source citations (meeting name, document type, timestamp)
+- Relevance scores
+
+#### Via Python API
+
+```python
+from pathlib import Path
+import sys
+sys.path.append(str(Path("services/RAG-search/scripts")))
+
+from ragflow_client import RAGFlowClient
+
+# Initialize client
+client = RAGFlowClient()
+
+# Search specific dataset
+results = client.search(
+    dataset_id="meeting_20250309_143022",
+    query="Что обсудили по проекту GPB?",
+    top_k=5,
+    similarity_threshold=0.7
+)
+
+for result in results:
+    print(f"Score: {result['score']}")
+    print(f"Text: {result['content']}")
+    print(f"Source: {result['metadata']['source']}")
+    print("---")
+
+# Chat with Claude (retrieval + generation)
+answer = client.chat(
+    question="Что обсудили по проекту GPB 9 марта?",
+    dataset_ids=["all"],  # or specific meeting IDs
+    top_k=5
+)
+
+print(answer)
+```
+
+#### Via Claude Code Agent
+
+Claude Code can query RAGFlow directly:
+
+```python
+# In your agent code
+from ragflow_client import RAGFlowClient
+
+client = RAGFlowClient()
+answer = client.chat(
+    question="What did we discuss about GPB project invoices?",
+    dataset_ids=["all"]
+)
+```
+
+### Configuration Options
+
+**Environment Variables** (`.env`):
+
+- **ENABLE_RAG_INDEXING**: Enable/disable automatic indexing (default: `false`)
+- **RAGFLOW_URL**: RAGFlow service URL (default: `http://localhost:9380`)
+- **RAGFLOW_API_KEY**: API key from RAGFlow UI (required for indexing)
+- **ENABLE_CONTEXTUAL_RETRIEVAL**: Enable Anthropic's Contextual Retrieval technique (default: `true`)
+  - When enabled: Adds meeting context to each chunk before embedding
+  - When disabled: Uses original chunks without context
+  - Recommended: Keep enabled for +30% retrieval accuracy
+- **CONTEXT_GENERATION_MODEL**: Claude model for context generation (default: `claude-sonnet-4-5-20250929`)
+
+**Contextual Retrieval Explained**:
+
+Traditional RAG embeds chunks in isolation, losing document context. Contextual Retrieval prepends context to each chunk:
+
+*Without Context*:
+- Chunk: "Иван согласился завершить расчеты до 15 марта"
+- Poor retrieval: Doesn't know which meeting, project, or context
+
+*With Context (Anthropic Technique)*:
+- Context: "Встреча: GPB проект - обсуждение счетов, Дата: 2025-03-09, Участники: Иван Петров, Мария Иванова"
+- Chunk: "Иван согласился завершить расчеты до 15 марта"
+- **Combined for embedding**: "{context}\n\n{chunk}"
+- Better retrieval: Knows meeting context, can filter by date/participants
+
+**Benefits**:
+- +30% retrieval accuracy (Anthropic benchmark)
+- Better cross-meeting queries
+- Implicit metadata filtering through semantic search
+
+### Managing Datasets
+
+```bash
+# List all indexed meetings
+python services/RAG-search/scripts/ragflow_client.py
+
+# Delete a specific dataset (meeting)
+from ragflow_client import RAGFlowClient
+client = RAGFlowClient()
+client.delete_dataset("meeting_20250309_143022")
+
+# Check RAGFlow health
+client.health_check()  # Returns True if accessible
+```
+
+### File Structure
+
+```
+services/RAG-search/
+├── docker-compose.ragflow.yml       # RAGFlow stack deployment
+├── Meeting_rag.md                   # Comprehensive implementation plan
+├── README.md                        # Quick start guide
+├── .env.example                     # Configuration template
+├── scripts/
+│   ├── contextual_enrichment.py     # Contextual Retrieval implementation
+│   ├── ragflow_client.py            # RAGFlow API wrapper
+│   └── ragflow_uploader.py          # Main upload script (called by orchestrator)
+└── config/
+    └── prompts/
+        └── context_generation.txt   # Claude prompt for context generation
+```
+
+**Meeting Metadata** (stored in RAGFlow):
+
+```json
+{
+  "meeting_id": "uuid",
+  "meeting_title": "GPB - Обсуждение счетов - 2025-03-09",
+  "meeting_date": "2025-03-09",
+  "video_filename": "meeting_20250309_143022.avi",
+  "result_folder": "data/results/meeting_20250309_143022",
+  "duration_seconds": 3467.5,
+  "num_speakers": 3,
+  "recognized_speakers": ["Иван Петров", "Мария Иванова"],
+  "rag_indexed": true,
+  "ragflow_dataset_id": "dataset-abc123",
+  "contextual_enrichment_applied": true
+}
+```
+
+### Troubleshooting
+
+**RAGFlow not accessible**:
+- Verify Docker containers are running: `docker-compose -f docker-compose.ragflow.yml ps`
+- Check logs: `docker-compose -f docker-compose.ragflow.yml logs -f ragflow`
+- Verify port 9380 is not in use by another application
+- Wait ~30 seconds after startup for RAGFlow to initialize
+
+**Upload fails with "RAGFlow API is not accessible"**:
+- Start RAGFlow: `cd services/RAG-search && docker-compose -f docker-compose.ragflow.yml up -d`
+- Wait for startup (check `docker-compose logs -f ragflow` for "Server started")
+- Verify `RAGFLOW_URL=http://localhost:9380` in `.env`
+
+**Upload fails with "RAGFLOW_API_KEY not set"**:
+- Generate API key in RAGFlow UI: Settings → API Keys → Create New Key
+- Add to `.env`: `RAGFLOW_API_KEY=your-key-here`
+- No need to restart orchestrator (reads .env on each run)
+
+**Contextual enrichment fails**:
+- Verify `CLAUDE_API_KEY` is set in `.env`
+- Check Claude API quota/rate limits
+- If enrichment fails, system falls back to original files without context (with warning)
+
+**Poor retrieval quality**:
+- Enable Contextual Retrieval: `ENABLE_CONTEXTUAL_RETRIEVAL=true`
+- Verify reranker is configured in RAGFlow UI (Settings → Models → Reranker)
+- Adjust similarity threshold in search (lower = more results, higher = more precise)
+- Try different query phrasing (natural language works best)
+
+**Slow indexing**:
+- Contextual enrichment calls Claude API for each chunk (~50-200 chunks per meeting)
+- Expected: 2-5 minutes per meeting with enrichment enabled
+- Disable for faster indexing: `ENABLE_CONTEXTUAL_RETRIEVAL=false` (not recommended)
+
+**Meeting not found in RAGFlow**:
+- Check `metadata.json` in result folder: `rag_indexed` should be `true`
+- Check orchestrator logs for upload errors
+- Verify `ENABLE_RAG_INDEXING=true` in `.env`
+- Manually trigger upload: `python services/RAG-search/scripts/ragflow_uploader.py data/results/meeting_folder`
+
+**Docker containers consuming too much resources**:
+- RAGFlow stack requires ~4GB RAM minimum
+- BGE-M3 embedding model: ~2GB disk space (first run download)
+- Infinity vector engine: CPU mode works, GPU optional
+- Adjust Docker Desktop memory limit: Settings → Resources → Memory
+
+### Performance Expectations
+
+**Indexing Performance**:
+- **With Contextual Enrichment** (recommended):
+  - 1-hour meeting (~100 chunks): 3-5 minutes
+  - Includes Claude API calls for context generation
+  - One-time cost per meeting
+- **Without Contextual Enrichment**:
+  - 1-hour meeting: 30-60 seconds
+  - No Claude API calls
+  - Lower retrieval accuracy
+
+**Query Performance**:
+- **Search query**: 200-500ms (depends on dataset size)
+- **Chat query** (retrieval + generation): 2-5 seconds
+  - Includes vector search, reranking, Claude generation
+- **Reranking overhead**: ~100-200ms (improves precision significantly)
+
+**Storage**:
+- **Vector database**: ~5-10MB per hour of meeting transcription
+- **Original documents**: ~100-500KB per meeting (transcript, summary, protocol)
+- **Enriched documents** (with context): ~150-700KB per meeting
+
+### Best Practices
+
+1. **Keep Contextual Retrieval Enabled**: +30% accuracy improvement is significant
+2. **Use Specific Queries**: "What did we discuss about GPB invoices on March 9?" works better than "Tell me about GPB"
+3. **Query in Russian**: BGE-M3 is multilingual, but Russian queries work best for Russian transcripts
+4. **Monitor disk space**: RAGFlow stores vectors on disk, plan for ~10MB per meeting hour
+5. **Regular backups**: Backup `services/RAG-search/ragflow_data/` for persistence
+6. **API rate limits**: Contextual enrichment uses Claude API, monitor quota if processing many meetings
+
 ## Implementation Guidelines
 
 ### Service Implementation Order
@@ -559,6 +893,7 @@ MODELS_PATH=./models
 - Project Description: `project_description.md` (comprehensive technical spec)
 - Development Plan: `meeting_transcriber_plan.md` (step-by-step implementation guide)
 - **Meeting Auto Capture Plan**: `MeetingAutoCapture_plan.md` (automated meeting capture system)
+- **RAG Search Plan**: `services/RAG-search/Meeting_rag.md` (RAGFlow + Contextual Retrieval implementation)
 - Claude Code Guide: `claude_code_guide.md` (prompt examples for building with Claude)
 - Docker Config: `docker_compose_config.yaml` (service definitions)
 

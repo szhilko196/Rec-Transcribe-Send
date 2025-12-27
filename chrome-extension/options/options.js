@@ -24,6 +24,7 @@ const elements = {
   audioFormatWebm: document.getElementById('audioFormatWebm'),
 
   videoQuality: document.getElementById('videoQuality'),
+  videoBitrate: document.getElementById('videoBitrate'),
   showHistory: document.getElementById('showHistory'),
 
   // NextCloud elements
@@ -87,6 +88,9 @@ async function loadSettings() {
 
     // Video quality
     elements.videoQuality.value = settings.videoQuality || '1080p';
+
+    // Video bitrate
+    elements.videoBitrate.value = settings.videoBitrate || 800000;
 
     // History toggle
     elements.showHistory.checked = settings.showHistory !== false;
@@ -275,6 +279,7 @@ async function handleSaveSettings() {
 
       audioFormat: elements.audioFormatWav.checked ? 'wav' : 'webm',
       videoQuality: elements.videoQuality.value,
+      videoBitrate: parseInt(elements.videoBitrate.value),
       showHistory: elements.showHistory.checked,
       directoryName: selectedDirectoryName, // Store selected folder name
 

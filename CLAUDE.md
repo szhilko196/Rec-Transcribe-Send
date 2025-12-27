@@ -151,6 +151,11 @@ python -m venv venv
 venv\Scripts\activate
 
 # Meeting Auto Capture - Standalone Setup
+
+# Option 1: Use root-level launcher (Windows, recommended)
+start_meeting-autocapture.bat
+
+# Option 2: Direct setup and start
 cd services/meeting-autocapture
 python -m venv venv
 venv\Scripts\activate
@@ -430,6 +435,13 @@ RECOGNITION_THRESHOLD=0.75             # Confidence threshold (0.65=lenient, 0.7
 SPEAKER_RECOGNITION_DEVICE=cpu         # Device for recognition (cpu/cuda, falls back to DEVICE if not set)
 SPEAKER_PROFILES_PATH=./data/speaker_profiles  # Path to speaker profiles
 
+# Diarization Configuration
+USE_NEW_DIARIZATION_ARCHITECTURE=true  # true=full file (accurate, slow), false=chunks (fast, duplicates)
+CHUNK_DURATION_SEC=1800                # Chunk duration in seconds (default: 1800 = 30 min)
+DIARIZATION_MIN_SPEAKERS=1             # Minimum speakers for auto-detection
+DIARIZATION_MAX_SPEAKERS=10            # Maximum speakers for auto-detection
+# DIARIZATION_NUM_SPEAKERS=3           # Exact number (if known, uncomment to use)
+
 # Meeting Auto Capture - Email Settings
 MAC_IMAP_HOST=imap.gmail.com
 MAC_IMAP_PORT=993
@@ -493,6 +505,21 @@ MODELS_PATH=./models
 - CPU mode expected: Real-time factor ~0.5-1.0 (1h video = 30-60min)
 - For faster processing: Enable GPU support (requires WSL2 + NVIDIA CUDA on Windows)
 - Alternatively use smaller model: `WHISPER_MODEL=base` (faster but less accurate)
+
+**Slow diarization (speaker identification) performance**:
+- **Quick fix (use chunked processing)**:
+  - Set `USE_NEW_DIARIZATION_ARCHITECTURE=false` in `.env`
+  - Set `CHUNK_DURATION_SEC=900` (15 min) or `600` (10 min) for faster processing
+  - **Trade-off**: May create speaker duplicates (SPEAKER_00 in chunk 1 ≠ SPEAKER_00 in chunk 2)
+  - **Solution**: Use speaker recognition to fix duplicates afterward
+  - Restart orchestrator script (no Docker restart needed)
+- **Best solution (enable GPU)**:
+  - Set `DEVICE=cuda` in `.env`
+  - Restart Docker: `docker-compose restart transcription-service`
+  - 3-4x faster diarization on full files
+- **Understanding the architectures**:
+  - **NEW** (`USE_NEW_DIARIZATION_ARCHITECTURE=true`): Processes entire audio file for diarization → Slow but accurate speaker labels
+  - **OLD** (`USE_NEW_DIARIZATION_ARCHITECTURE=false`): Processes audio in chunks → Fast but may create duplicate speaker labels between chunks
 
 **Claude API rate limits**:
 - Default tier has per-minute request limits

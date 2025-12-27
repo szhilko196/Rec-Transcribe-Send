@@ -12,12 +12,12 @@ echo.
 REM Change to script directory
 cd /d "%~dp0"
 
-REM Check Python
-echo [1/7] Checking Python installation...
-python --version
+REM Check Python 3.11
+echo [1/7] Checking Python 3.11 installation...
+py -3.11 --version
 if errorlevel 1 (
-    echo [ERROR] Python not found!
-    echo Please install Python 3.10 or higher from https://www.python.org/
+    echo [ERROR] Python 3.11 not found!
+    echo Please install Python 3.11 64-bit from https://www.python.org/
     pause
     exit /b 1
 )
@@ -28,7 +28,7 @@ echo [2/7] Creating virtual environment...
 if exist "venv" (
     echo Virtual environment already exists, skipping...
 ) else (
-    python -m venv venv
+    py -3.11 -m venv venv
     if errorlevel 1 (
         echo [ERROR] Failed to create virtual environment!
         pause

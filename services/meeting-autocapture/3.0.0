@@ -1,0 +1,5 @@
+Collecting watchdog
+  Using cached watchdog-6.0.0-py3-none-win_amd64.whl.metadata (44 kB)
+Using cached watchdog-6.0.0-py3-none-win_amd64.whl (79 kB)
+Installing collected packages: watchdog
+Successfully installed watchdog-6.0.0

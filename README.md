@@ -153,6 +153,20 @@ flowchart TB
    SPEAKER_PROFILES_PATH=./data/speaker_profiles
    ```
 
+   **Optional - Diarization Configuration:**
+   ```env
+   # Architecture type
+   USE_NEW_DIARIZATION_ARCHITECTURE=true    # true=full file (accurate, slow), false=chunks (fast, duplicates)
+
+   # Chunk settings
+   CHUNK_DURATION_SEC=1800                  # 1800 = 30 min (default), 900 = 15 min, 600 = 10 min
+
+   # Speaker detection
+   DIARIZATION_MIN_SPEAKERS=1               # Minimum speakers for auto-detection
+   DIARIZATION_MAX_SPEAKERS=10              # Maximum speakers for auto-detection
+   # DIARIZATION_NUM_SPEAKERS=3             # Exact number (if known, uncomment)
+   ```
+
    **Optional - Email delivery:**
    ```env
    SMTP_SERVER=smtp.gmail.com
@@ -218,14 +232,17 @@ flowchart TB
 **Quick Start:**
 
 ```bash
-cd services/meeting-autocapture
+# Windows - Option 1: Use root-level launcher (recommended)
+start_meeting-autocapture.bat
 
-# Windows:
+# Windows - Option 2: Direct setup and start
+cd services/meeting-autocapture
 setup.bat
 notepad config\.env
 start.bat
 
 # Linux/Mac:
+cd services/meeting-autocapture
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -592,17 +609,24 @@ meeting_2025-01-29_<timestamp>/
 
 ### CPU Mode (Intel i7) with Whisper medium model
 
-**Short videos (<30 minutes):**
+**Short videos (<30 minutes) - NEW Architecture:**
 - 25 min video → ~15-20 min processing
 - Whisper: ~10-15 min
-- Diarization: ~3-5 min
+- Diarization (full file): ~3-5 min
 - Claude: ~2-5 min
 
-**Long videos (>30 minutes):**
+**Long videos (>30 minutes) - NEW Architecture (default):**
 - 1 hour video → 30-60 min processing
 - Whisper (chunked): ~25-40 min
-- Diarization (full file): ~5-15 min
+- Diarization (full file): ~5-15 min ⚠️ **SLOW**
 - Claude: ~2-5 min
+
+**Long videos (>30 minutes) - OLD Architecture (faster):**
+- 1 hour video → 15-30 min processing
+- Whisper (chunked): ~10-20 min
+- Diarization (chunked, 15 min chunks): ~5-8 min ✅ **FASTER**
+- Claude: ~2-5 min
+- ⚠️ May create speaker duplicates
 
 ### GPU Mode (NVIDIA RTX 3060)
 - 1 hour video → 8-15 min processing
@@ -610,7 +634,11 @@ meeting_2025-01-29_<timestamp>/
 - Diarization: ~3-5 min
 - Claude: ~2-5 min
 
-**💡 Tip**: Use smaller model (`WHISPER_MODEL=small`) for faster processing
+**💡 Performance Tips:**
+- **For faster processing on CPU**: Set `USE_NEW_DIARIZATION_ARCHITECTURE=false` and `CHUNK_DURATION_SEC=900`
+- **For GPU**: Enable `DEVICE=cuda` and restart Docker services
+- **For smaller files**: Use `WHISPER_MODEL=small` (faster but less accurate)
+- **Trade-offs**: OLD architecture is 2-3x faster but may create speaker label duplicates
 
 ## 📖 Documentation
 
@@ -673,10 +701,45 @@ playwright install chromium
 
 ### Core Processing
 
-**Slow processing:**
+**Slow transcription (Whisper):**
 - Use smaller model: `WHISPER_MODEL=small` or `base`
-- Enable GPU support (requires CUDA)
+- Enable GPU support (requires CUDA): `DEVICE=cuda`
 - Medium model is ~1.5-2x slower but more accurate than base
+
+**Slow diarization (speaker identification) - IMPORTANT:**
+
+This is a common issue! Diarization can be very slow on CPU for long meetings.
+
+**Quick Fix (Recommended for CPU users):**
+```env
+# In .env file:
+USE_NEW_DIARIZATION_ARCHITECTURE=false   # Use chunked processing
+CHUNK_DURATION_SEC=900                   # 15 min chunks (or 600 for 10 min)
+```
+- ✅ **Much faster** processing (especially for long meetings)
+- ⚠️ **May create speaker duplicates** between chunks (SPEAKER_00 in chunk 1 ≠ SPEAKER_00 in chunk 2)
+- ✅ **Solution**: Enable speaker recognition to fix duplicates automatically
+- 🔄 **No Docker restart needed** - just restart the orchestrator script
+
+**Best Solution (if you have GPU):**
+```env
+DEVICE=cuda                             # Enable GPU
+USE_NEW_DIARIZATION_ARCHITECTURE=true   # Keep accurate mode
+```
+- Restart Docker: `docker-compose restart transcription-service`
+- 3-4x faster diarization on full files
+
+**Understanding the architectures:**
+- **NEW** (`true`): Processes entire audio file → Slow but accurate speaker labels
+- **OLD** (`false`): Processes audio in chunks → Fast but may create duplicate speaker labels
+
+**Performance comparison (1-hour meeting on CPU):**
+| Architecture | Chunk Size | Diarization Time | Speaker Labels |
+|--------------|------------|------------------|----------------|
+| NEW (true) | N/A | 20-30 min | ✅ Accurate |
+| OLD (false) | 30 min | 8-12 min | ⚠️ May duplicate |
+| OLD (false) | 15 min | 5-8 min | ⚠️ May duplicate |
+| OLD (false) | 10 min | 3-6 min | ⚠️ May duplicate |
 
 **pyannote authentication error:**
 - Check `HF_TOKEN` in `.env`
@@ -686,6 +749,7 @@ playwright install chromium
 **Out of memory:**
 - Increase Docker Desktop memory limit (Settings → Resources → Memory: 8GB+)
 - Use smaller Whisper model: `WHISPER_MODEL=small`
+- Reduce chunk size: `CHUNK_DURATION_SEC=900` (15 min)
 
 **First run is slow:**
 - Models download on first run (~2GB total)

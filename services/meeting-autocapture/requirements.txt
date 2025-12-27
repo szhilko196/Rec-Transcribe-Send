@@ -13,6 +13,9 @@ playwright>=1.40.0
 # Scheduling
 APScheduler>=3.10.4
 
+# File system monitoring
+watchdog>=3.0.0
+
 # Optional: API mode (if MAC_ENABLE_API=true in .env)
 # fastapi>=0.104.0
 # uvicorn[standard]>=0.24.0

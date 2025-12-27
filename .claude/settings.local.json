@@ -20,7 +20,16 @@
       "Bash(cmd /c \"timeout /t 2 /nobreak >nul && tasklist | findstr python\")",
       "Bash(cmd /c \"wmic process where \"\"name=''python.exe'' and commandline like ''%meeting-autocapture%''\"\" get processid,commandline\")",
       "WebFetch(domain:habr.com)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(cmd /c \"services\\transcription_orchestrator\\venv\\Scripts\\pip.exe install soundfile\")",
+      "Bash(docker stats:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(curl:*)",
+      "Bash(docker exec:*)",
+      "Bash(services/transcription_orchestrator/venv/Scripts/python.exe:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(cmd /c \"timeout /t 120 /nobreak >nul\")",
+      "Bash(docker-compose ps:*)"
     ],
     "deny": [],
     "ask": []

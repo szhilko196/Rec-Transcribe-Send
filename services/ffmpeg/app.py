@@ -246,8 +246,11 @@ async def extract_audio(
         logger.warning(f"Unusual file extension: {file_ext}, attempting to process...")
 
     # Generate unique filenames
+    # Use only UUID for temp filenames to avoid filesystem length limits
+    # Store original filename in metadata for reference
     file_id = str(uuid.uuid4())
-    input_filename = f"{file_id}_{file.filename}"
+    file_extension = Path(file.filename).suffix.lower()
+    input_filename = f"{file_id}{file_extension}"
     output_filename = f"{file_id}.wav"
 
     input_path = INPUT_DIR / input_filename

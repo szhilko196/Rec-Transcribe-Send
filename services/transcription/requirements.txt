@@ -15,10 +15,15 @@ faster-whisper>=1.0.0,<2.0.0
 
 # Speaker diarization (используем последние совместимые версии)
 pyannote.audio>=3.1.0,<4.0.0
+# Pin huggingface_hub to version that supports use_auth_token for pyannote compatibility
+huggingface-hub>=0.20.0,<0.21.0
 
-# Audio processing (используем более новые но CPU-совместимые версии)
-torch>=2.1.0,<2.5.0
-torchaudio>=2.1.0,<2.5.0
+# Audio processing - CUDA 12.2 compatible versions
+# Install PyTorch with CUDA 12.1 support (compatible with CUDA 12.2 runtime)
+# Use --index-url to get the correct CUDA version
+torch==2.4.1
+torchaudio==2.4.1
+# NOTE: Install command in Dockerfile must use: pip install torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
 
 # Utilities
 numpy>=1.24.0,<2.0.0

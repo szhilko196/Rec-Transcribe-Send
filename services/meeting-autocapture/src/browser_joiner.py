@@ -5,6 +5,7 @@ Phase 4 of Meeting Auto Capture - Using ffmpeg screen capture
 from playwright.sync_api import sync_playwright, BrowserContext, Playwright
 import os
 import logging
+import re
 from typing import Optional
 from datetime import datetime
 import shutil
@@ -22,11 +23,16 @@ class BrowserJoiner:
 
         Args:
             profiles_path: Path to browser profiles directory
-            video_output_folder: Folder where videos will be saved
+            video_output_folder: Folder where COMPLETED videos will be moved
         """
         self.profiles_path = os.path.abspath(profiles_path)
         self.video_output_folder = os.path.abspath(video_output_folder)
         self.logger = logging.getLogger(__name__)
+
+        # Create capturing folder for in-progress recordings
+        # This prevents watchdog from detecting files during recording
+        self.capturing_folder = os.path.join(os.path.dirname(self.video_output_folder), "capturing")
+        os.makedirs(self.capturing_folder, exist_ok=True)
 
         # Ensure output folder exists
         os.makedirs(self.video_output_folder, exist_ok=True)
@@ -38,8 +44,12 @@ class BrowserJoiner:
         self.ffmpeg_processes = {}
         self.video_file_paths = {}
 
-        # ffmpeg executable path
-        self.ffmpeg_path = "C:/prj/Rec-Transcribe-Send/tools/ffmpeg-8.0-essentials_build/bin/ffmpeg.exe"
+        # ffmpeg executable path and audio device from environment
+        self.ffmpeg_path = os.getenv("MAC_FFMPEG_PATH", "C:/prj/Rec-Transcribe-Send/tools/ffmpeg-8.0-essentials_build/bin/ffmpeg.exe")
+        self.audio_device = os.getenv("MAC_AUDIO_DEVICE", 'audio="Набор микрофонов (Senary Audio)"')
+
+        self.logger.info(f"ffmpeg path: {self.ffmpeg_path}")
+        self.logger.info(f"Audio device: {self.audio_device}")
 
     def join_meeting(self, meeting: MeetingInvitation) -> Optional[BrowserContext]:
         """
@@ -170,18 +180,36 @@ class BrowserJoiner:
             self.logger.info("Closing browser context...")
             context.close()
 
-            # Get video file path
-            video_path = self.video_file_paths.get(meeting.id)
-            if video_path and os.path.exists(video_path):
-                self.logger.info(f"Video saved to: {video_path}")
+            # Get video file path from capturing folder
+            capturing_video_path = self.video_file_paths.get(meeting.id)
+            if capturing_video_path and os.path.exists(capturing_video_path):
+                self.logger.info(f"Video recorded to: {capturing_video_path}")
 
-                # Remove from tracking
-                if meeting.id in self.video_file_paths:
-                    del self.video_file_paths[meeting.id]
+                # Move completed video from capturing folder to final output folder
+                # This triggers watchdog only when recording is complete
+                filename = os.path.basename(capturing_video_path)
+                final_video_path = os.path.join(self.video_output_folder, filename)
 
-                return video_path
+                try:
+                    self.logger.info(f"Moving video to output folder: {final_video_path}")
+                    shutil.move(capturing_video_path, final_video_path)
+                    self.logger.info(f"Video successfully moved and ready for processing")
+
+                    # Remove from tracking
+                    if meeting.id in self.video_file_paths:
+                        del self.video_file_paths[meeting.id]
+
+                    return final_video_path
+
+                except Exception as e:
+                    self.logger.error(f"Failed to move video to output folder: {e}")
+                    # Return capturing path as fallback
+                    if meeting.id in self.video_file_paths:
+                        del self.video_file_paths[meeting.id]
+                    return capturing_video_path
+
             else:
-                self.logger.error(f"Video file not found: {video_path}")
+                self.logger.error(f"Video file not found: {capturing_video_path}")
                 return None
 
         except Exception as e:
@@ -208,35 +236,60 @@ class BrowserJoiner:
             # Format: {platform}_{timestamp}_mmmail({sender_email})_{meeting_id}.webm
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"{meeting.platform}_{timestamp}_mmmail({meeting.sender_email})_{meeting.id}.webm"
-            video_path = os.path.join(self.video_output_folder, filename)
+            # Save to capturing folder during recording to avoid watchdog detection
+            video_path = os.path.join(self.capturing_folder, filename)
 
-            # ffmpeg command for screen capture with audio
+            # ffmpeg command for screen capture
+            # Try with audio first, fall back to video-only if audio fails
+            #
             # WebM format (VP9 + Opus) - more robust than MP4 for recording
-            # -f gdigrab: Screen capture on Windows
+            # -f gdigrab: Screen capture on Windows (works with essentials build)
             # -framerate 15: Capture 15 frames per second (SD quality)
             # -i desktop: Capture entire desktop
-            # -f dshow: DirectShow audio device
+            # -f dshow: DirectShow audio device (requires FULL ffmpeg build)
             # -i audio="...": Audio device name
             # -c:v libvpx-vp9: VP9 video codec (better compression than VP8)
             # -crf 33: Quality setting for VP9 (23=high, 33=SD, 45=low)
             # -b:v 0: Use CRF mode (ignore bitrate)
             # -c:a libopus: Opus audio codec (best quality)
             # -b:a 128k: High quality audio at 128 kbps
-            ffmpeg_cmd = [
-                self.ffmpeg_path,
-                '-f', 'gdigrab',
-                '-framerate', '15',
-                '-i', 'desktop',
-                '-f', 'dshow',
-                '-i', 'audio=Набор микрофонов (Senary Audio)',
-                '-c:v', 'libvpx-vp9',
-                '-crf', '33',          # SD video quality
-                '-b:v', '0',           # Use CRF mode
-                '-c:a', 'libopus',
-                '-b:a', '128k',        # High quality audio
-                '-y',  # Overwrite output file
-                video_path
-            ]
+
+            # Check if we should try audio capture
+            enable_audio = os.getenv("MAC_ENABLE_AUDIO", "true").lower() == "true"
+
+            if enable_audio and self.audio_device:
+                # Try recording with audio (requires full ffmpeg build with dshow)
+                self.logger.info("Attempting screen + audio recording")
+                ffmpeg_cmd = [
+                    self.ffmpeg_path,
+                    '-f', 'gdigrab',
+                    '-framerate', '15',
+                    '-i', 'desktop',
+                    '-f', 'dshow',
+                    '-i', self.audio_device,  # Use configured audio device
+                    '-c:v', 'libvpx-vp9',
+                    '-crf', '33',          # SD video quality
+                    '-b:v', '0',           # Use CRF mode
+                    '-c:a', 'libopus',
+                    '-b:a', '128k',        # High quality audio
+                    '-y',  # Overwrite output file
+                    video_path
+                ]
+            else:
+                # Video-only recording (works with essentials build)
+                self.logger.warning("Audio capture disabled - recording video only")
+                self.logger.warning("To enable audio: Download full ffmpeg build from https://www.gyan.dev/ffmpeg/builds/")
+                ffmpeg_cmd = [
+                    self.ffmpeg_path,
+                    '-f', 'gdigrab',
+                    '-framerate', '15',
+                    '-i', 'desktop',
+                    '-c:v', 'libvpx-vp9',
+                    '-crf', '33',          # SD video quality
+                    '-b:v', '0',           # Use CRF mode
+                    '-y',  # Overwrite output file
+                    video_path
+                ]
 
             self.logger.info(f"Starting ffmpeg recording: {video_path}")
             self.logger.debug(f"ffmpeg command: {' '.join(ffmpeg_cmd)}")
@@ -250,16 +303,96 @@ class BrowserJoiner:
                 creationflags=subprocess.CREATE_NO_WINDOW  # Hide console window on Windows
             )
 
+            # Wait a bit and check if process is still running
+            import time
+            time.sleep(2)  # Give ffmpeg time to start or fail
+
+            if process.poll() is not None:
+                # Process already terminated - failed to start
+                stderr_output = process.stderr.read().decode('utf-8', errors='replace')
+                self.logger.error(f"ffmpeg failed to start!")
+                self.logger.error(f"ffmpeg stderr: {stderr_output}")
+
+                # If audio capture failed, try again with video-only
+                if enable_audio and ('dshow' in stderr_output.lower() or 'audio' in stderr_output.lower()):
+                    self.logger.warning("Audio capture failed - retrying with video-only")
+                    self.logger.warning("To enable audio: Set MAC_ENABLE_AUDIO=false in .env or download full ffmpeg")
+
+                    # Retry with video-only command
+                    ffmpeg_cmd_video_only = [
+                        self.ffmpeg_path,
+                        '-f', 'gdigrab',
+                        '-framerate', '15',
+                        '-i', 'desktop',
+                        '-c:v', 'libvpx-vp9',
+                        '-crf', '33',
+                        '-b:v', '0',
+                        '-y',
+                        video_path
+                    ]
+
+                    self.logger.info("Retrying with video-only recording")
+                    process = subprocess.Popen(
+                        ffmpeg_cmd_video_only,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+
+                    time.sleep(2)
+                    if process.poll() is not None:
+                        stderr_output = process.stderr.read().decode('utf-8', errors='replace')
+                        self.logger.error(f"Video-only recording also failed!")
+                        self.logger.error(f"ffmpeg stderr: {stderr_output}")
+                        return None
+                else:
+                    return None
+
             # Store process and video path
             self.ffmpeg_processes[meeting.id] = process
             self.video_file_paths[meeting.id] = video_path
 
-            self.logger.info(f"ffmpeg process started (PID: {process.pid})")
+            self.logger.info(f"ffmpeg process started successfully (PID: {process.pid})")
             return video_path
 
         except Exception as e:
             self.logger.error(f"Error starting ffmpeg recording: {e}", exc_info=True)
             return None
+
+    def _sanitize_filename(self, text: str, max_length: int = 50) -> str:
+        """
+        Sanitize text for use in filename
+
+        Args:
+            text: Text to sanitize (e.g., meeting subject)
+            max_length: Maximum length of sanitized text
+
+        Returns:
+            Sanitized filename-safe string
+        """
+        if not text:
+            return "Untitled"
+
+        # Replace invalid Windows filename characters with underscores
+        # Invalid: < > : " / \ | ? *
+        sanitized = re.sub(r'[<>:"/\\|?*]', '_', text)
+
+        # Replace multiple spaces/underscores with single underscore
+        sanitized = re.sub(r'[\s_]+', '_', sanitized)
+
+        # Remove leading/trailing underscores and dots
+        sanitized = sanitized.strip('_. ')
+
+        # Truncate to max length
+        if len(sanitized) > max_length:
+            sanitized = sanitized[:max_length].rstrip('_. ')
+
+        # Ensure we have something
+        if not sanitized:
+            return "Untitled"
+
+        return sanitized
 
     def _get_profile_name(self, platform: str) -> str:
         """

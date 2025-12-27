@@ -6,6 +6,30 @@ This directory contains speaker voice profiles for automatic speaker recognition
 
 The speaker recognition system uses voice embeddings to identify known speakers and replace generic labels (SPEAKER_00, SPEAKER_01) with real names in transcripts.
 
+## System Requirements
+
+### Python Environment
+- **Python 3.11** 64-bit (required for PyTorch/SpeechBrain compatibility)
+- Virtual environment setup via `services/transcription_orchestrator/setup.bat`
+
+### Required Packages
+- `speechbrain>=1.0.0` - Voice embedding model
+- `torch>=2.1.0,<2.5.0` - Deep learning framework
+- `torchaudio>=2.1.0,<2.5.0` - Audio processing
+- `soundfile>=0.12.1` - Audio file I/O backend
+- `numpy>=1.24.0` - Numerical computing
+
+### Environment Variables (.env)
+```env
+ENABLE_SPEAKER_RECOGNITION=true
+RECOGNITION_THRESHOLD=0.75           # 0.65=lenient, 0.75=balanced, 0.85=strict
+SPEAKER_RECOGNITION_DEVICE=cpu       # or "cuda" for GPU
+SPEAKER_PROFILES_PATH=C:/path/to/data/speaker_profiles
+```
+
+### First-Time Setup
+On first run, SpeechBrain will download the ECAPA-TDNN model (~500MB). This is a one-time download and will be cached locally.
+
 ## Audio Sample Requirements
 
 For best recognition accuracy, speaker audio samples should meet these criteria:
@@ -105,9 +129,83 @@ RECOGNITION_THRESHOLD=0.75
 SPEAKER_PROFILES_PATH=./data/speaker_profiles
 ```
 
-### 6. Test Recognition
+### 6. Generate Embeddings
 
-Process a new video or manually run the orchestrator to test:
+After updating `speakers.json` with `embedding_file` paths, generate the embeddings by running the orchestrator once or using a test script:
+
+**Option A: Process a video** (embeddings will be generated automatically):
+```bash
+python services/transcription_orchestrator/orchestrator.py data/input/test_meeting.avi
+```
+
+**Option B: Generate embeddings without processing** (faster, recommended for initial setup):
+```python
+# Create a test script: test_generate_embeddings.py
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'services' / 'transcription_orchestrator'))
+
+from dotenv import load_dotenv
+import os
+
+# Load .env
+ROOT_DIR = Path(__file__).parent.parent
+load_dotenv(ROOT_DIR / '.env', override=True)
+
+from recognize import SpeakerRecognizer
+
+# Initialize recognizer
+recognizer = SpeakerRecognizer(
+    profiles_path=os.getenv('SPEAKER_PROFILES_PATH', './data/speaker_profiles'),
+    device=os.getenv('SPEAKER_RECOGNITION_DEVICE', 'cpu'),
+    threshold=float(os.getenv('RECOGNITION_THRESHOLD', '0.75'))
+)
+
+# Load profiles and generate embeddings
+print("Generating embeddings...")
+loaded_count = recognizer.load_profiles()
+print(f"Successfully generated embeddings for {loaded_count} speakers!")
+
+# Verify embeddings were saved
+embeddings_dir = Path(os.getenv('SPEAKER_PROFILES_PATH', './data/speaker_profiles')) / 'embeddings'
+npy_files = list(embeddings_dir.glob('*.npy'))
+print(f"\nEmbedding files created: {len(npy_files)}")
+for f in npy_files:
+    print(f"  - {f.name}")
+```
+
+Run the script:
+```bash
+python test_generate_embeddings.py
+```
+
+**What happens**:
+1. SpeechBrain ECAPA-TDNN model is loaded (~500MB download on first run)
+2. For each speaker:
+   - Audio samples are loaded
+   - Voice embeddings are extracted (192-dimensional vectors)
+   - Embeddings are averaged across samples
+   - Result is saved to `embeddings/{speaker_id}_embed.npy`
+3. Files are cached for fast loading in future runs
+
+**Expected output**:
+```
+Generating embeddings...
+2025-11-29 22:55:05,086 - recognize - INFO - Model loaded successfully (1.0s)
+2025-11-29 22:55:06,197 - recognize - INFO - Loaded speaker: Юлия Рублева (ID: yuliya_rubleva)
+2025-11-29 22:55:14,884 - recognize - INFO - Loaded speaker: Мария Егорова (ID: mariya_egorova)
+...
+Successfully generated embeddings for 10 speakers!
+
+Embedding files created: 10
+  - yuliya_rubleva_embed.npy
+  - mariya_egorova_embed.npy
+  ...
+```
+
+### 7. Test Recognition
+
+Process a new video to test speaker recognition:
 
 ```bash
 python services/transcription_orchestrator/orchestrator.py data/input/test_meeting.avi
@@ -123,7 +221,11 @@ python services/transcription_orchestrator/orchestrator.py data/input/test_meeti
 
 ### Optional Fields
 
-- `embedding_file`: Path to cached embedding (auto-generated if not specified)
+- `embedding_file`: **IMPORTANT** - Path to cached embedding file (relative to speaker_profiles directory)
+  - **Without this field**: Embeddings are generated in memory but NOT saved to disk (slow on every run)
+  - **With this field**: Embeddings are cached to disk and loaded instantly on subsequent runs
+  - **Format**: `"embeddings/{speaker_id}_embed.npy"`
+  - **Example**: `"embedding_file": "embeddings/ivan_petrov_embed.npy"`
 - `created_at`: ISO 8601 timestamp
 - `metadata`: Custom metadata (role, department, email, etc.)
 
@@ -167,12 +269,22 @@ python services/transcription_orchestrator/orchestrator.py data/input/test_meeti
 
 ### Embeddings Not Cached
 
-**Symptom**: Recognition is slow, embeddings regenerated every time
+**Symptom**: Recognition is slow, embeddings regenerated every time, no `.npy` files in `embeddings/` folder
 
 **Solutions**:
+- **Add `embedding_file` field to each speaker in `speakers.json`**:
+  ```json
+  {
+    "id": "ivan_petrov",
+    "name": "Иван Петров",
+    "audio_samples": [...],
+    "embedding_file": "embeddings/ivan_petrov_embed.npy"  // ← ADD THIS LINE
+  }
+  ```
 - Check write permissions on `embeddings/` directory
 - Verify `embedding_file` path in `speakers.json` is correct
 - Check disk space availability
+- Run embedding generation script (see Step 6 in Enrollment Process above)
 
 ### Model Download Fails
 

@@ -17,24 +17,29 @@ export class ScreenRecorder {
   /**
    * Start recording the screen
    * @param {boolean} audioOnly - Record audio only
+   * @param {number} videoBitrate - Video bitrate in bps (optional, defaults to 800000)
+   * @param {string} videoQuality - Video resolution: '720p', '1080p', '2k' (optional, defaults to '1080p')
    * @returns {Promise<void>}
    */
-  async startRecording(audioOnly = false) {
+  async startRecording(audioOnly = false, videoBitrate = 800000, videoQuality = '1080p') {
     try {
       this.audioOnly = audioOnly;
       this.recordedChunks = [];
 
       // Obtain stream via the Screen Capture API
-      this.stream = await this.getMediaStream(audioOnly);
+      this.stream = await this.getMediaStream(audioOnly, videoQuality);
 
       // Determine MIME type based on mode
       const mimeType = this.getMimeType(audioOnly);
 
       // Create MediaRecorder instance
+      // Bitrate settings (configurable from options):
+      // - Video: Default 800 kbps (~360 MB/hour), configurable 500-2500 kbps
+      // - Audio: 128 kbps (high quality audio, ~57 MB/hour)
       this.mediaRecorder = new MediaRecorder(this.stream, {
         mimeType: mimeType,
-        videoBitsPerSecond: audioOnly ? undefined : 2500000, // 2.5 Mbps for video
-        audioBitsPerSecond: 128000, // 128 kbps for audio
+        videoBitsPerSecond: audioOnly ? undefined : videoBitrate,
+        audioBitsPerSecond: 128000, // 128 kbps for audio (unchanged)
       });
 
       // Event handlers
@@ -98,9 +103,10 @@ export class ScreenRecorder {
   /**
    * Get media stream
   * @param {boolean} audioOnly - Audio only
+  * @param {string} videoQuality - Video resolution: '720p', '1080p', '2k'
    * @returns {Promise<MediaStream>}
    */
-  async getMediaStream(audioOnly) {
+  async getMediaStream(audioOnly, videoQuality = '1080p') {
     try {
       if (audioOnly) {
         // For audio-only mode, request only audio
@@ -113,16 +119,19 @@ export class ScreenRecorder {
           video: false,
         });
       } else {
+        // Get resolution constraints based on quality setting
+        const videoConstraints = this.getVideoConstraints(videoQuality);
+
         // For video mode, use getDisplayMedia
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: 'always',
-            displaySurface: 'monitor', // or 'window', 'browser'
-          },
+          video: videoConstraints,
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             sampleRate: 48000,
+            channelCount: 2,
+            // Request higher audio quality
+            autoGainControl: false,
           },
           preferCurrentTab: false,
         });
@@ -147,7 +156,8 @@ export class ScreenRecorder {
 
         // If microphone stream is available, merge tracks
         if (microphoneStream) {
-          const audioContext = new AudioContext();
+          // Create AudioContext with 48kHz sample rate to preserve audio quality
+          const audioContext = new AudioContext({ sampleRate: 48000 });
           const mixedDestination = audioContext.createMediaStreamDestination();
 
           // Add system audio (if present)
@@ -192,6 +202,44 @@ export class ScreenRecorder {
         throw new Error(`Media access error: ${error.message}`);
       }
     }
+  }
+
+  /**
+   * Get video constraints based on quality setting
+   * @param {string} videoQuality - '720p', '1080p', or '2k'
+   * @returns {object}
+   */
+  getVideoConstraints(videoQuality) {
+    const constraints = {
+      cursor: 'always',
+      displaySurface: 'monitor',
+    };
+
+    // Set resolution constraints based on quality
+    switch (videoQuality) {
+      case '720p':
+        constraints.width = { ideal: 1280, max: 1280 };
+        constraints.height = { ideal: 720, max: 720 };
+        constraints.frameRate = { ideal: 30, max: 30 };
+        break;
+      case '1080p':
+        constraints.width = { ideal: 1920, max: 1920 };
+        constraints.height = { ideal: 1080, max: 1080 };
+        constraints.frameRate = { ideal: 30, max: 30 };
+        break;
+      case '2k':
+        constraints.width = { ideal: 2560, max: 2560 };
+        constraints.height = { ideal: 1440, max: 1440 };
+        constraints.frameRate = { ideal: 30, max: 30 };
+        break;
+      default:
+        // Default to 1080p
+        constraints.width = { ideal: 1920, max: 1920 };
+        constraints.height = { ideal: 1080, max: 1080 };
+        constraints.frameRate = { ideal: 30, max: 30 };
+    }
+
+    return constraints;
   }
 
   /**

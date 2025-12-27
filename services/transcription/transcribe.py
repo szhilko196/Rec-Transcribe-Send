@@ -79,13 +79,17 @@ class WhisperTranscriber:
         )
 
         try:
+            # Get number of CPU threads from environment or use all available
+            num_workers = int(os.getenv("CT2_NUM_THREADS", os.cpu_count() or 4))
+
             self.model = WhisperModel(
                 model_size,
                 device=device,
                 compute_type=compute_type,
-                download_root=download_root
+                download_root=download_root,
+                num_workers=num_workers  # Use all available CPU cores
             )
-            logger.info(f"Whisper model '{model_size}' loaded successfully")
+            logger.info(f"Whisper model '{model_size}' loaded successfully (num_workers={num_workers})")
         except Exception as e:
             logger.error(f"Error loading Whisper model: {e}")
             raise

@@ -21,8 +21,11 @@ from typing import Set, Dict
 import hashlib
 from dotenv import load_dotenv
 
-# Load environment variables from .env
-load_dotenv()
+# Load environment variables from root .env file
+# Use explicit path and override=True to ensure correct values
+ROOT_DIR = Path(__file__).parent.parent.parent  # Go up to project root
+ENV_PATH = ROOT_DIR / '.env'
+load_dotenv(ENV_PATH, override=True)
 
 try:
     from watchdog.observers import Observer

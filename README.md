@@ -1,15 +1,15 @@
 # Rec-Transcribe-Send - Automated Meeting Transcription System
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.10-blue.svg)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0-red.svg)
 
-**Rec-Transcribe-Send** is an automated end-to-end system for meeting capture and transcription with support for Russian and English languages. The system can **automatically join meetings** from email invitations, record them with **ffmpeg screen capture** (WebM format, VP9+Opus), extract audio, transcribe speech to text, identify speakers, and generate meeting summaries and protocols - all fully automated!
+**Rec-Transcribe-Send** is an automated end-to-end system for meeting capture and transcription with support for Russian and English languages. The system can **automatically join meetings** from email invitations, record them with **ffmpeg screen capture** (WebM format, VP9+Opus), extract audio, transcribe speech to text, identify speakers by diarization, **recognize known speakers by voice**, and generate meeting summaries and protocols - all fully automated!
 
 ## 🎯 Key Features
 
-### 🆕 Automated Meeting Capture (v1.2.0)
+### Automated Meeting Capture (v1.2.0)
 - **📧 Email Monitoring** - monitors inbox for meeting invitations via IMAP
 - **🤖 Auto-Join Meetings** - automatically joins meetings from 7+ platforms (Zoom, Webex, Google Meet, etc.)
 - **🎥 ffmpeg Screen Capture** - records full desktop screen + audio (WebM format, VP9+Opus)
@@ -22,6 +22,7 @@
 - **🎵 Audio Extraction** from video files (FFmpeg)
 - **📝 Speech Transcription** with Russian language support (Faster-Whisper)
 - **🎤 Speaker Diarization** (pyannote.audio)
+- **🎭 Speaker Recognition** - 🆕 identify known speakers by voice (SpeechBrain ECAPA-TDNN)
 - **📄 Document Generation** - summaries and meeting protocols (Claude API)
 - **🔒 Local Processing** - all components except Claude API run locally for data confidentiality
 
@@ -74,7 +75,9 @@ flowchart TB
         Transcription -->|Diarization| PyannoteModel[🎤 pyannote.audio]
         WhisperModel --> TranscriptJSON[📄 transcript_full.json]
         PyannoteModel --> TranscriptJSON
-        TranscriptJSON -->|Generate docs| Claude[🧠 Claude API]
+        TranscriptJSON -->|2.5 Recognize speakers| SpeakerRec[🎭 Speaker Recognition<br/>SpeechBrain ECAPA-TDNN]
+        SpeakerRec -->|Replace SPEAKER_00<br/>with real names| TranscriptUpdated[📄 transcript_full.json<br/>with speaker names]
+        TranscriptUpdated -->|3. Generate docs| Claude[🧠 Claude API]
     end
 
     %% Results
@@ -86,14 +89,14 @@ flowchart TB
     Results -->|Send via SMTP| Email[📧 Email Delivery]
     Email -->|Attachments| Recipient([👤 Recipient/Sender])
 
-    %% Styling
-    classDef newClass fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
-    classDef userClass fill:#e1f5ff,stroke:#01579b,stroke-width:2px
-    classDef extensionClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    classDef storageClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    classDef processClass fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
-    classDef aiClass fill:#fce4ec,stroke:#880e4f,stroke-width:2px
-    classDef resultClass fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    %% Styling - optimized for both light and dark themes
+    classDef newClass fill:#4CAF50,stroke:#2E7D32,stroke-width:3px,color:#fff
+    classDef userClass fill:#2196F3,stroke:#1565C0,stroke-width:2px,color:#fff
+    classDef extensionClass fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
+    classDef storageClass fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
+    classDef processClass fill:#66BB6A,stroke:#2E7D32,stroke-width:2px,color:#fff
+    classDef aiClass fill:#EC407A,stroke:#AD1457,stroke-width:2px,color:#fff
+    classDef resultClass fill:#FFC107,stroke:#F57F17,stroke-width:2px,color:#000
 
     class EmailInvite,AutoCapture,MeetingDB,Browser,Meeting newClass
     class User,Recipient userClass
@@ -141,6 +144,28 @@ flowchart TB
    - Claude API Key: https://console.anthropic.com/
    - HuggingFace Token: https://huggingface.co/settings/tokens
    - Accept pyannote license: https://huggingface.co/pyannote/speaker-diarization
+
+   **Optional - Speaker Recognition:**
+   ```env
+   ENABLE_SPEAKER_RECOGNITION=false
+   RECOGNITION_THRESHOLD=0.75
+   SPEAKER_RECOGNITION_DEVICE=cpu
+   SPEAKER_PROFILES_PATH=./data/speaker_profiles
+   ```
+
+   **Optional - Diarization Configuration:**
+   ```env
+   # Architecture type
+   USE_NEW_DIARIZATION_ARCHITECTURE=true    # true=full file (accurate, slow), false=chunks (fast, duplicates)
+
+   # Chunk settings
+   CHUNK_DURATION_SEC=1800                  # 1800 = 30 min (default), 900 = 15 min, 600 = 10 min
+
+   # Speaker detection
+   DIARIZATION_MIN_SPEAKERS=1               # Minimum speakers for auto-detection
+   DIARIZATION_MAX_SPEAKERS=10              # Maximum speakers for auto-detection
+   # DIARIZATION_NUM_SPEAKERS=3             # Exact number (if known, uncomment)
+   ```
 
    **Optional - Email delivery:**
    ```env
@@ -207,14 +232,17 @@ flowchart TB
 **Quick Start:**
 
 ```bash
-cd services/meeting-autocapture
+# Windows - Option 1: Use root-level launcher (recommended)
+start_meeting-autocapture.bat
 
-# Windows:
+# Windows - Option 2: Direct setup and start
+cd services/meeting-autocapture
 setup.bat
 notepad config\.env
 start.bat
 
 # Linux/Mac:
+cd services/meeting-autocapture
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -362,6 +390,174 @@ python test_installation.py  # Linux/Mac
 
 **For automated meeting recordings**, use the Meeting Auto Capture service with ffmpeg (no extension required).
 
+## 🎭 Speaker Recognition - Identify Known Speakers by Voice
+
+**NEW!** The Speaker Recognition module identifies known speakers by their voice characteristics, automatically replacing generic labels (`SPEAKER_00`, `SPEAKER_01`) with real names in transcripts.
+
+### How It Works
+
+1. **📚 Voice Enrollment** - Create speaker profiles with 3+ audio samples per person
+2. **🧬 Embedding Generation** - SpeechBrain ECAPA-TDNN generates 192-dimensional voice embeddings
+3. **🔍 Speaker Matching** - During transcription, system matches voices against enrolled profiles
+4. **✨ Name Replacement** - Generic labels replaced with real names in final transcript
+5. **🎯 Confidence Scoring** - Only matches above threshold are used (default: 0.75)
+
+### Benefits
+
+- ✅ **Personalized Protocols** - Meeting protocols show real participant names
+- ✅ **Better Context** - Easier to follow who said what
+- ✅ **Fully Local** - All recognition happens on your machine (no cloud API)
+- ✅ **High Accuracy** - ECAPA-TDNN model achieves >95% accuracy with good samples
+- ✅ **Fast Processing** - Cached embeddings make recognition instant
+
+### Quick Start
+
+**1. Install SpeechBrain dependencies:**
+```bash
+cd services/transcription_orchestrator
+pip install -r requirements.txt
+```
+
+**2. Initialize speaker profiles:**
+```bash
+python manage_speakers.py --init
+```
+
+**3. Enroll a speaker:**
+```bash
+# Extract 3+ audio samples (5-10 seconds each) from a meeting
+python ../../tools/extract_speaker_samples.py --interactive
+
+# Add speaker to database
+python manage_speakers.py --add ivan_petrov \
+    --name "Иван Петров" \
+    --samples "data/speaker_profiles/ivan_petrov/sample_01.wav,data/speaker_profiles/ivan_petrov/sample_02.wav,data/speaker_profiles/ivan_petrov/sample_03.wav" \
+    --role "Senior Developer"
+```
+
+**4. Enable in .env:**
+```env
+ENABLE_SPEAKER_RECOGNITION=true
+RECOGNITION_THRESHOLD=0.75          # 0.65=lenient, 0.75=balanced, 0.85=strict
+SPEAKER_RECOGNITION_DEVICE=cpu      # or 'cuda' for GPU
+SPEAKER_PROFILES_PATH=./data/speaker_profiles
+```
+
+**5. Process a meeting:**
+```bash
+# Simply process as usual - recognition happens automatically
+cp meeting.mp4 data/input/
+```
+
+### Audio Sample Requirements
+
+For best results, provide **3-5 audio samples** per speaker with:
+- ✅ **Duration**: 5-10 seconds each (minimum 3 seconds)
+- ✅ **Quality**: Clear speech, minimal background noise
+- ✅ **Content**: Normal speaking (not shouting/whispering)
+- ✅ **Format**: WAV, 16kHz, mono (auto-converted if needed)
+- ✅ **Variety**: Different phrases/sentences (not repeating same words)
+
+**Tip**: Extract samples from previous meetings using `extract_speaker_samples.py`
+
+### CLI Tools
+
+**Manage speakers:**
+```bash
+cd services/transcription_orchestrator
+
+# List all enrolled speakers
+python manage_speakers.py --list
+
+# Validate speaker profiles
+python manage_speakers.py --validate
+
+# Remove a speaker
+python manage_speakers.py --remove ivan_petrov
+```
+
+**Extract audio samples:**
+```bash
+cd tools
+
+# Interactive mode with visual feedback
+python extract_speaker_samples.py --interactive
+
+# Extract specific segment
+python extract_speaker_samples.py \
+    --input data/audio/meeting_123.wav \
+    --output data/speaker_profiles/maria/sample_01.wav \
+    --start 00:05:30 \
+    --duration 7
+```
+
+### Before/After Example
+
+**Before (without speaker recognition):**
+```json
+{
+  "speaker": "SPEAKER_00",
+  "start": 0.5,
+  "end": 3.2,
+  "text": "Добрый день, коллеги"
+}
+```
+
+**After (with speaker recognition):**
+```json
+{
+  "speaker": "Иван Петров",
+  "speaker_id": "SPEAKER_00",
+  "recognized": true,
+  "start": 0.5,
+  "end": 3.2,
+  "text": "Добрый день, коллеги"
+}
+```
+
+### Configuration Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_SPEAKER_RECOGNITION` | `false` | Enable/disable speaker recognition |
+| `RECOGNITION_THRESHOLD` | `0.75` | Confidence threshold (0.0-1.0)<br/>0.65=lenient, 0.75=balanced, 0.85=strict |
+| `SPEAKER_RECOGNITION_DEVICE` | `cpu` | Device for recognition: `cpu` or `cuda` |
+| `SPEAKER_PROFILES_PATH` | `./data/speaker_profiles` | Path to speaker profiles directory |
+
+### Troubleshooting
+
+**Low accuracy / wrong identifications:**
+- Collect more samples (5+ per speaker recommended)
+- Use longer samples (8-10 seconds)
+- Ensure samples are high quality (clear speech, low noise)
+- Increase threshold to 0.85 (more strict)
+
+**Speaker not recognized:**
+- Check sample quality and duration
+- Lower threshold to 0.65 (more lenient)
+- Verify speaker profile with: `python manage_speakers.py --validate`
+- Re-enroll with better samples
+
+**"No speaker profiles loaded":**
+```bash
+# Initialize database
+python services/transcription_orchestrator/manage_speakers.py --init
+
+# Verify speakers.json exists
+ls data/speaker_profiles/speakers.json
+```
+
+**Performance issues:**
+- Use GPU: `SPEAKER_RECOGNITION_DEVICE=cuda` (3-4x faster)
+- Embeddings are cached - first run is slower
+- Recognition adds ~2-5 min for 1-hour meeting
+
+### Documentation
+
+- **Implementation Guide**: `SPEAKER_RECOGNITION_IMPLEMENTATION.md` (comprehensive 30+ page guide)
+- **Setup Instructions**: `data/speaker_profiles/README.md`
+- **Configuration**: See `.env.example` for all variables
+
 ## 📁 Output Structure
 
 Results are saved in `data/results/<video_name>_<timestamp>/`:
@@ -370,12 +566,14 @@ Results are saved in `data/results/<video_name>_<timestamp>/`:
 meeting_2025-01-29_<timestamp>/
 ├── original_meeting.mp4        # Original video
 ├── audio.wav                   # Extracted audio (16kHz, mono)
-├── transcript_full.json        # Full transcription with timestamps
+├── transcript_full.json        # Full transcription with timestamps and speaker names
 ├── transcript_readable.txt     # Human-readable format
 ├── summary.md                  # Meeting summary (Claude AI)
 ├── protocol.md                 # Meeting protocol with action items
 └── metadata.json               # Processing metadata
 ```
+
+**Note**: When Speaker Recognition is enabled, `transcript_full.json` will contain real speaker names instead of generic labels (SPEAKER_00 → "Иван Петров").
 
 ## 🔧 Technology Stack
 
@@ -395,6 +593,7 @@ meeting_2025-01-29_<timestamp>/
 - **FFmpeg** - Audio/video processing
 - **Faster-Whisper** - Optimized speech-to-text (4x faster than vanilla Whisper)
 - **pyannote.audio** - Speaker diarization with temporal segmentation
+- **SpeechBrain** - Speaker recognition with ECAPA-TDNN embeddings (192-dimensional)
 - **Claude API** - Document generation
 - **Python Watchdog** - Automatic folder monitoring
 
@@ -410,17 +609,24 @@ meeting_2025-01-29_<timestamp>/
 
 ### CPU Mode (Intel i7) with Whisper medium model
 
-**Short videos (<30 minutes):**
+**Short videos (<30 minutes) - NEW Architecture:**
 - 25 min video → ~15-20 min processing
 - Whisper: ~10-15 min
-- Diarization: ~3-5 min
+- Diarization (full file): ~3-5 min
 - Claude: ~2-5 min
 
-**Long videos (>30 minutes):**
+**Long videos (>30 minutes) - NEW Architecture (default):**
 - 1 hour video → 30-60 min processing
 - Whisper (chunked): ~25-40 min
-- Diarization (full file): ~5-15 min
+- Diarization (full file): ~5-15 min ⚠️ **SLOW**
 - Claude: ~2-5 min
+
+**Long videos (>30 minutes) - OLD Architecture (faster):**
+- 1 hour video → 15-30 min processing
+- Whisper (chunked): ~10-20 min
+- Diarization (chunked, 15 min chunks): ~5-8 min ✅ **FASTER**
+- Claude: ~2-5 min
+- ⚠️ May create speaker duplicates
 
 ### GPU Mode (NVIDIA RTX 3060)
 - 1 hour video → 8-15 min processing
@@ -428,7 +634,11 @@ meeting_2025-01-29_<timestamp>/
 - Diarization: ~3-5 min
 - Claude: ~2-5 min
 
-**💡 Tip**: Use smaller model (`WHISPER_MODEL=small`) for faster processing
+**💡 Performance Tips:**
+- **For faster processing on CPU**: Set `USE_NEW_DIARIZATION_ARCHITECTURE=false` and `CHUNK_DURATION_SEC=900`
+- **For GPU**: Enable `DEVICE=cuda` and restart Docker services
+- **For smaller files**: Use `WHISPER_MODEL=small` (faster but less accurate)
+- **Trade-offs**: OLD architecture is 2-3x faster but may create speaker label duplicates
 
 ## 📖 Documentation
 
@@ -437,6 +647,10 @@ meeting_2025-01-29_<timestamp>/
   - Quick Start: `services/meeting-autocapture/QUICK_START.md`
   - Full Docs: `services/meeting-autocapture/README.md`
   - Implementation Plan: `MeetingAutoCapture_plan.md`
+- **Speaker Recognition**:
+  - Implementation Guide: `SPEAKER_RECOGNITION_IMPLEMENTATION.md` (30+ pages)
+  - Setup Guide: `data/speaker_profiles/README.md`
+  - Implementation Plan: `SpeakerRecognition_plan.md`
 - **Chrome Extension**:
   - User Guide: `chrome-extension/README.md`
   - CDP Integration: `chrome-extension/PLAYWRIGHT_CDP_SUPPORT.md`
@@ -487,10 +701,45 @@ playwright install chromium
 
 ### Core Processing
 
-**Slow processing:**
+**Slow transcription (Whisper):**
 - Use smaller model: `WHISPER_MODEL=small` or `base`
-- Enable GPU support (requires CUDA)
+- Enable GPU support (requires CUDA): `DEVICE=cuda`
 - Medium model is ~1.5-2x slower but more accurate than base
+
+**Slow diarization (speaker identification) - IMPORTANT:**
+
+This is a common issue! Diarization can be very slow on CPU for long meetings.
+
+**Quick Fix (Recommended for CPU users):**
+```env
+# In .env file:
+USE_NEW_DIARIZATION_ARCHITECTURE=false   # Use chunked processing
+CHUNK_DURATION_SEC=900                   # 15 min chunks (or 600 for 10 min)
+```
+- ✅ **Much faster** processing (especially for long meetings)
+- ⚠️ **May create speaker duplicates** between chunks (SPEAKER_00 in chunk 1 ≠ SPEAKER_00 in chunk 2)
+- ✅ **Solution**: Enable speaker recognition to fix duplicates automatically
+- 🔄 **No Docker restart needed** - just restart the orchestrator script
+
+**Best Solution (if you have GPU):**
+```env
+DEVICE=cuda                             # Enable GPU
+USE_NEW_DIARIZATION_ARCHITECTURE=true   # Keep accurate mode
+```
+- Restart Docker: `docker-compose restart transcription-service`
+- 3-4x faster diarization on full files
+
+**Understanding the architectures:**
+- **NEW** (`true`): Processes entire audio file → Slow but accurate speaker labels
+- **OLD** (`false`): Processes audio in chunks → Fast but may create duplicate speaker labels
+
+**Performance comparison (1-hour meeting on CPU):**
+| Architecture | Chunk Size | Diarization Time | Speaker Labels |
+|--------------|------------|------------------|----------------|
+| NEW (true) | N/A | 20-30 min | ✅ Accurate |
+| OLD (false) | 30 min | 8-12 min | ⚠️ May duplicate |
+| OLD (false) | 15 min | 5-8 min | ⚠️ May duplicate |
+| OLD (false) | 10 min | 3-6 min | ⚠️ May duplicate |
 
 **pyannote authentication error:**
 - Check `HF_TOKEN` in `.env`
@@ -500,6 +749,7 @@ playwright install chromium
 **Out of memory:**
 - Increase Docker Desktop memory limit (Settings → Resources → Memory: 8GB+)
 - Use smaller Whisper model: `WHISPER_MODEL=small`
+- Reduce chunk size: `CHUNK_DURATION_SEC=900` (15 min)
 
 **First run is slow:**
 - Models download on first run (~2GB total)
@@ -507,14 +757,55 @@ playwright install chromium
 - pyannote models: ~50MB
 - Cached in `./models/` - subsequent runs are fast
 
+### Speaker Recognition
+
+**SpeechBrain not installed:**
+```bash
+cd services/transcription_orchestrator
+pip install -r requirements.txt
+```
+
+**"No speaker profiles loaded":**
+```bash
+# Initialize database
+cd services/transcription_orchestrator
+python manage_speakers.py --init
+```
+
+**Low recognition accuracy:**
+- Add more samples per speaker (5+ recommended)
+- Use longer samples (8-10 seconds)
+- Increase quality (clear speech, minimal noise)
+- Increase threshold: `RECOGNITION_THRESHOLD=0.85`
+
+**Speaker not recognized at all:**
+- Lower threshold: `RECOGNITION_THRESHOLD=0.65`
+- Validate profiles: `python manage_speakers.py --validate`
+- Check sample quality and duration
+- Re-enroll with better audio samples
+
+**Symlink permission error (Windows):**
+- Already handled by LocalStrategy.COPY in code
+- If error persists, run as administrator
+
+**torchaudio compatibility error:**
+- Already patched in code (compatibility layer added)
+- If error persists, update torch/torchaudio: `pip install --upgrade torch torchaudio`
+
+**Performance is slow:**
+- Enable GPU: `SPEAKER_RECOGNITION_DEVICE=cuda` (requires CUDA)
+- Embeddings are cached - first run with each speaker is slower
+- Recognition typically adds 2-5 minutes for 1-hour meeting
+
 ## 🔒 Security and Privacy
 
 - ✅ FFmpeg - fully local
 - ✅ Faster-Whisper - fully local
 - ✅ pyannote.audio - fully local
+- ✅ SpeechBrain - fully local (speaker recognition)
 - ⚠️ Claude API - external service (data sent to Anthropic)
 
-For complete privacy, you can replace Claude API with a local LLM (Ollama, LM Studio).
+For complete privacy, you can replace Claude API with a local LLM (Ollama, LM Studio). All other processing (transcription, diarization, speaker recognition) happens entirely on your machine.
 
 ## 🤝 Contributing
 
@@ -528,12 +819,52 @@ MIT License - see LICENSE file for details
 
 - [Faster-Whisper](https://github.com/guillaumekln/faster-whisper) by Guillaume Klein
 - [pyannote.audio](https://github.com/pyannote/pyannote-audio) by Hervé Bredin
+- [SpeechBrain](https://speechbrain.github.io/) by SpeechBrain Team
 - [Claude AI](https://www.anthropic.com/) by Anthropic
 - [FFmpeg](https://ffmpeg.org/) by FFmpeg team
+- [Playwright](https://playwright.dev/) by Microsoft
 
 ---
 
 ## 🆕 What's New
+
+### v1.3.0 - Speaker Recognition (November 2025)
+
+**Major Feature**: Added speaker recognition to identify known speakers by voice and replace generic labels with real names.
+
+**Key Features:**
+- ✅ **Voice Enrollment** - Create profiles with audio samples for known speakers
+- ✅ **SpeechBrain ECAPA-TDNN** - State-of-the-art speaker embeddings (192-dimensional)
+- ✅ **Automatic Name Replacement** - SPEAKER_00 → Real names in transcripts
+- ✅ **Confidence Scoring** - Adjustable threshold (0.65-0.85) for accuracy control
+- ✅ **Fully Local Processing** - No cloud API, all on-device
+- ✅ **Embedding Caching** - Fast recognition with pre-computed embeddings
+- ✅ **GPU Support** - CUDA acceleration for 3-4x faster processing
+- ✅ **CLI Management Tools** - Easy speaker enrollment and validation
+
+**Benefits:**
+- Personalized meeting protocols with real participant names
+- Better context and readability in transcripts
+- High accuracy (>95% with good samples)
+- Minimal performance impact (~2-5 min for 1-hour meeting)
+
+**Usage:**
+```bash
+# Install dependencies
+cd services/transcription_orchestrator
+pip install -r requirements.txt
+
+# Enroll speakers
+python manage_speakers.py --add ivan_petrov --name "Иван Петров" --samples "path/to/samples/*.wav"
+
+# Enable in .env
+ENABLE_SPEAKER_RECOGNITION=true
+```
+
+**Documentation:**
+- Implementation Guide: `SPEAKER_RECOGNITION_IMPLEMENTATION.md` (30+ pages)
+- Setup Guide: `data/speaker_profiles/README.md`
+- CLI Tools: `manage_speakers.py`, `extract_speaker_samples.py`
 
 ### v1.2.0 - ffmpeg Screen Capture (November 2025)
 
@@ -575,5 +906,7 @@ MIT License - see LICENSE file for details
 ---
 
 **Status**: Production Ready ✅
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Last Updated**: November 2025
+
+**Latest Feature**: 🎭 Speaker Recognition - Automatically identify known speakers by voice and replace generic labels with real names!

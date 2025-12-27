@@ -9,6 +9,7 @@ export const STORAGE_KEYS = {
   DIRECTORY_NAME: 'directoryName', // Selected folder name for display
   AUDIO_FORMAT: 'audioFormat', // 'wav' or 'webm'
   VIDEO_QUALITY: 'videoQuality', // '720p', '1080p', '2k'
+  VIDEO_BITRATE: 'videoBitrate', // Video bitrate in bps (500000, 800000, 1500000, 2500000)
   SHOW_HISTORY: 'showHistory',
   RECORDING_HISTORY: 'recordingHistory',
   LAST_TASK_NUMBER: 'lastTaskNumber',
@@ -33,6 +34,7 @@ export const STORAGE_KEYS = {
 export const DEFAULT_SETTINGS = {
   audioFormat: 'wav',
   videoQuality: '1080p',
+  videoBitrate: 800000, // 800 kbps (Medium quality, ~360 MB/hour)
   showHistory: true,
   recordingHistory: [],
 

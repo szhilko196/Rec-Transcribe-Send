@@ -238,10 +238,14 @@ async function startRecording(data) {
 
     console.log('[MyRecV SW] Starting recording with data:', data);
 
-    // Получаем email из настроек
+    // Получаем настройки (email, videoBitrate, videoQuality)
     const settings = await getAllSettings();
     const userEmail = settings.userEmail || '';
+    const videoBitrate = settings.videoBitrate || 800000; // Default to 800 kbps
+    const videoQuality = settings.videoQuality || '1080p'; // Default to 1080p
     console.log('[MyRecV SW] User email from settings:', userEmail);
+    console.log('[MyRecV SW] Video bitrate from settings:', videoBitrate, 'bps');
+    console.log('[MyRecV SW] Video quality from settings:', videoQuality);
 
     // Создаем offscreen document для доступа к DOM APIs
     await createOffscreenDocument();
@@ -252,6 +256,8 @@ async function startRecording(data) {
     const response = await chrome.runtime.sendMessage({
       action: 'startRecording',
       audioOnly: audioOnly,
+      videoBitrate: videoBitrate,
+      videoQuality: videoQuality,
       target: 'offscreen' // Помечаем что это для offscreen
     });
 

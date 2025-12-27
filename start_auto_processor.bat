@@ -71,12 +71,15 @@ if errorlevel 1 (
     pip install anthropic
 )
 
-REM Check SpeechBrain (for speaker recognition feature)
-python -c "import speechbrain" >nul 2>&1
-if errorlevel 1 (
-    echo [INFO] SpeechBrain not found. Speaker recognition will not be available.
-    echo [INFO] To enable speaker recognition, install dependencies:
-    echo [INFO]   pip install -r services\transcription_orchestrator\requirements.txt
+REM Check if Python 3.11 venv exists for speaker recognition
+set "ORCHESTRATOR_PYTHON=python"
+if exist "services\transcription_orchestrator\venv\Scripts\python.exe" (
+    set "ORCHESTRATOR_PYTHON=services\transcription_orchestrator\venv\Scripts\python.exe"
+    echo [INFO] Using Python 3.11 venv for orchestrator - speaker recognition enabled
+) else (
+    echo [INFO] Python 3.11 venv not found. Using system Python.
+    echo [INFO] Speaker recognition will not be available.
+    echo [INFO] To enable, run: services\transcription_orchestrator\setup.bat
 )
 
 REM Create necessary folders
@@ -108,8 +111,8 @@ echo.
 echo ================================================================================
 echo.
 
-REM Start monitoring
-python services\transcription_orchestrator\watch_input_folder.py
+REM Start monitoring (use venv Python if available)
+%ORCHESTRATOR_PYTHON% services\transcription_orchestrator\watch_input_folder.py
 
 echo.
 echo ================================================================================

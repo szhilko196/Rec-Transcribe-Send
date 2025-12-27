@@ -10,7 +10,8 @@ services:
     volumes:
       # Path is taken from DATA_PATH environment variable in .env file
       # Fallback to ./data if variable is not set
-      - ${DATA_PATH:-./data}:/app/data
+      # WORKAROUND: Hardcoded path to prevent Docker from resolving YandexDisk symlinks
+      - C:/YandexDisk/DIASOFT/VideoPars/data:/app/data
     environment:
       - TZ=Europe/Moscow
     restart: unless-stopped
@@ -28,41 +29,47 @@ services:
       context: ./services/transcription
       dockerfile: Dockerfile
       args:
-        # If you have GPU, change to: nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
-        BASE_IMAGE: python:3.10-slim
+        # CUDA enabled with cuDNN 8 (PyTorch 2.4.1 cu121 is built against cuDNN 8)
+        BASE_IMAGE: nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
     container_name: meeting-transcription
     ports:
       - "8003:8000"
     volumes:
-      - ${DATA_PATH:-./data}:/app/data
+      # WORKAROUND: Hardcoded path to prevent Docker from resolving YandexDisk symlinks
+      - C:/YandexDisk/DIASOFT/VideoPars/data:/app/data
       - ./models:/app/models  # Cache for Whisper and pyannote models
       - ./logs:/app/logs
     environment:
       - HF_TOKEN=${HF_TOKEN}
-      - WHISPER_MODEL=${WHISPER_MODEL:-medium}
-      - DEVICE=${DEVICE:-cpu}  # cpu or cuda
+      - WHISPER_MODEL=medium
+      - DEVICE=cuda
       - LANGUAGE=ru
       - TZ=Europe/Moscow
+      # CPU thread optimization - use all available cores
+      - OMP_NUM_THREADS=16          # OpenMP threads (PyTorch, NumPy)
+      - MKL_NUM_THREADS=16          # Intel MKL threads
+      - OPENBLAS_NUM_THREADS=16     # OpenBLAS threads
+      - NUMEXPR_NUM_THREADS=16      # NumExpr threads
+      - CT2_NUM_THREADS=16          # CTranslate2 threads (faster-whisper backend)
+      # cuDNN 9 library path (from nvidia-cudnn-cu12 Python package)
+      - LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:/usr/lib/x86_64-linux-gnu:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
     restart: unless-stopped
     networks:
       - meeting-net
     deploy:
       resources:
         limits:
-          memory: 8G  # Maximum 8GB RAM for transcription
+          memory: 32G  # Maximum 32GB RAM for transcription
         reservations:
           memory: 4G  # Minimum 4GB RAM
-    # Uncomment for GPU support
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 60s
-      timeout: 30s
+      timeout: 120s  # Increased from 30s to allow GPU processing to complete
       retries: 3
       start_period: 120s  # Long startup due to model loading
 

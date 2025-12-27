@@ -45,6 +45,10 @@ htmlcov/
 # Tools directories
 tools/
 
+# Browser profiles (contain cache and sensitive data)
+services/meeting-autocapture/data/browser_profiles/
+**/browser_profiles/
+
 # Data directories
 data/input/*
 data/audio/*
@@ -93,3 +97,18 @@ CodeReview_plan.md
 CodeReview.md
 SpeakerRecognition_plan.md
 MeetingAutoCapture_plan.md
+data/speaker_profiles/test_speaker
+data/speaker_profiles/speakers.json
+tools/test_recording.mp4
+tools/ffmpeg.zip
+/doc-internal
+data/speaker_profiles/aleksei_semenov
+data/speaker_profiles/dmitrii_karpov
+data/speaker_profiles/gaivoronskaya_margarita
+data/speaker_profiles/grigorev_oleg
+data/speaker_profiles/mariya_egorova
+data/speaker_profiles/natalya_ostrovskaya
+data/speaker_profiles/yuliya_rubleva
+data/speaker_profiles/yurii_polupanov
+data/speaker_profiles/zhilko_sergei
+data/speaker_profiles/zolotova_elena_vitalevna

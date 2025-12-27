@@ -1,0 +1,31 @@
+{
+  "id": "cd1cc53f-3355-48a1-99e0-cd0f5722450b",
+  "platform": "telemost.yandex",
+  "meeting_link": "https://telemost.yandex.ru/j/54396536473445",
+  "subject": "Telemost-3",
+  "sender_email": "szhilko@diasoft.ru",
+  "sender_name": "Жилко Сергей",
+  "participants": [
+    "ser9res@yandex.ru"
+  ],
+  "start_time": "2025-11-30T18:15:00+03:00",
+  "end_time": "2025-11-30T18:18:00+03:00",
+  "duration_minutes": 3,
+  "password": null,
+  "status": "completed",
+  "email_body_html": "<html xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" xmlns:m=\"http://schemas.microsoft.com/office/2004/12/omml\" xmlns=\"http://www.w3.org/TR/REC-html40\">\r\n<head>\r\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=koi8-r\">\r\n<meta name=\"Generator\" content=\"Microsoft Word 15 (filtered medium)\">\r\n<style><!--\r\n/* Font Definitions */\r\n@font-face\r\n\t{font-family:\"Cambria Math\";\r\n\tpanose-1:2 4 5 3 5 4 6 3 2 4;}\r\n@font-face\r\n\t{font-family:Calibri;\r\n\tpanose-1:2 15 5 2 2 2 4 3 2 4;}\r\n@font-face\r\n\t{font-family:Aptos;}\r\n/* Style Definitions */\r\np.MsoNormal, li.MsoNormal, div.MsoNormal\r\n\t{margin:0cm;\r\n\tfont-size:11.0pt;\r\n\tfont-family:\"Calibri\",sans-serif;\r\n\tmso-fareast-language:EN-US;}\r\na:link, span.MsoHyperlink\r\n\t{mso-style-priority:99;\r\n\tcolor:#467886;\r\n\ttext-decoration:underline;}\r\nspan.EmailStyle18\r\n\t{mso-style-type:personal-compose;}\r\n.MsoChpDefault\r\n\t{mso-style-type:export-only;\r\n\tfont-size:10.0pt;\r\n\tmso-ligatures:none;}\r\n@page WordSection1\r\n\t{size:612.0pt 792.0pt;\r\n\tmargin:2.0cm 42.5pt 2.0cm 3.0cm;}\r\ndiv.WordSection1\r\n\t{page:WordSection1;}\r\n--></style><!--[if gte mso 9]><xml>\r\n<o:shapedefaults v:ext=\"edit\" spidmax=\"1026\" />\r\n</xml><![endif]--><!--[if gte mso 9]><xml>\r\n<o:shapelayout v:ext=\"edit\">\r\n<o:idmap v:ext=\"edit\" data=\"1\" />\r\n</o:shapelayout></xml><![endif]-->\r\n</head>\r\n<body lang=\"RU\" link=\"#467886\" vlink=\"#96607D\" style=\"word-wrap:break-word\">\r\n<div class=\"WordSection1\">\r\n<p class=\"MsoNormal\"><a href=\"https://telemost.yandex.ru/j/54396536473445\">https://telemost.yandex.ru/j/54396536473445</a><o:p></o:p></p>\r\n<p class=\"MsoNormal\"><span style=\"font-family:&quot;Aptos&quot;,sans-serif\"><o:p>&nbsp;</o:p></span></p>\r\n</div>\r\n</body>\r\n</html>\r\n",
+  "email_body_text": "https://telemost.yandex.ru/j/54396536473445\r\n\r\n",
+  "email_raw_headers": {
+    "subject": "Telemost-3",
+    "from": "Жилко Сергей <szhilko@diasoft.ru>",
+    "to": "\"ser9res@yandex.ru\" <ser9res@yandex.ru>",
+    "date": "Sun, 30 Nov 2025 15:08:36 +0000",
+    "message_id": "<83af8c101da646d58e2ef3be130aa8ba@diasoft.ru>"
+  },
+  "email_attachments": [],
+  "created_at": "2025-11-30T15:08:40.391256",
+  "processed_at": "2025-11-30T15:19:11.021783+00:00",
+  "video_file_path": "C:\\prj\\Rec-Transcribe-Send\\data\\input\\telemost.yandex_20251130_181558_mmmail(szhilko@diasoft.ru)_cd1cc53f-3355-48a1-99e0-cd0f5722450b.webm",
+  "error_message": null,
+  "browser_session_id": null
+}

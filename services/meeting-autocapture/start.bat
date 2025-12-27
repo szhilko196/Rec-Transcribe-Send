@@ -43,9 +43,9 @@ if not exist "config\.env" (
     exit /b 1
 )
 
-REM Check Python
+REM Check Python (use venv's Python explicitly)
 echo [2/4] Checking Python...
-python --version
+venv\Scripts\python.exe --version
 if errorlevel 1 (
     echo [ERROR] Python not found in virtual environment!
     pause
@@ -86,7 +86,7 @@ echo   Press Ctrl+C to stop
 echo ============================================================
 echo.
 
-python src\main.py
+venv\Scripts\python.exe src\main.py
 
 REM If Python exits with error
 if errorlevel 1 (

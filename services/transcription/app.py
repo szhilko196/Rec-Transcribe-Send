@@ -507,6 +507,129 @@ async def transcribe_with_speakers(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/transcribe-with-speakers-path", response_model=TranscriptionWithSpeakersResponse)
+async def transcribe_with_speakers_path(
+    file_path: str = Query(..., description="Path to audio file in /app/data"),
+    language: str = Query("ru", description="Audio language"),
+    beam_size: int = Query(5, ge=1, le=10, description="Beam size"),
+    num_speakers: Optional[int] = Query(None, ge=1, le=20, description="Number of speakers"),
+    min_speakers: Optional[int] = Query(None, ge=1, le=20, description="Min. speakers"),
+    max_speakers: Optional[int] = Query(None, ge=1, le=20, description="Max. speakers")
+):
+    """
+    Full process: transcription + diarization (using file path)
+
+    Optimized endpoint for files already in /app/data volume.
+    Avoids HTTP upload overhead by directly accessing mounted files.
+
+    Args:
+        file_path: Relative path from /app/data (e.g., "results/folder/audio.wav")
+    """
+    if not models_loaded:
+        raise HTTPException(status_code=503, detail="Models not loaded")
+
+    start_time = datetime.utcnow()
+    file_id = str(uuid.uuid4())
+
+    try:
+        # Construct full path
+        audio_path = DATA_DIR / file_path
+
+        # Security check: ensure file is within DATA_DIR
+        if not str(audio_path.resolve()).startswith(str(DATA_DIR.resolve())):
+            raise HTTPException(status_code=400, detail="File path must be within /app/data")
+
+        # Check if file exists
+        if not audio_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+        logger.info(f"Starting full processing (path): {audio_path.name}")
+
+        # Get duration
+        duration = await get_audio_duration(audio_path)
+
+        loop = asyncio.get_event_loop()
+
+        # Run transcription and diarization in parallel
+        logger.info("Launching transcription and diarization in parallel...")
+
+        transcription_task = loop.run_in_executor(
+            None,
+            whisper_transcriber.transcribe,
+            audio_path,
+            language,
+            beam_size
+        )
+
+        diarization_task = loop.run_in_executor(
+            None,
+            speaker_diarizer.diarize,
+            audio_path,
+            num_speakers,
+            min_speakers,
+            max_speakers
+        )
+
+        # Wait for both tasks to complete
+        transcription_segments, diarization_segments = await asyncio.gather(
+            transcription_task,
+            diarization_task
+        )
+
+        logger.info("Transcription and diarization completed, starting merge...")
+
+        # Merge results
+        merged_segments = merge_transcription_diarization(
+            transcription_segments,
+            diarization_segments
+        )
+
+        # Count unique speakers
+        unique_speakers = len(set(seg["speaker"] for seg in merged_segments))
+
+        # Save result
+        transcript_filename = f"{file_id}_full_transcript.json"
+        transcript_path = TRANSCRIPTS_DIR / transcript_filename
+
+        transcript_data = {
+            "metadata": {
+                "original_filename": audio_path.name,
+                "source_path": file_path,
+                "duration_seconds": duration,
+                "num_speakers": unique_speakers,
+                "language": language,
+                "processed_at": datetime.utcnow().isoformat()
+            },
+            "transcript": merged_segments
+        }
+
+        async with aiofiles.open(transcript_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(transcript_data, ensure_ascii=False, indent=2))
+
+        processing_time = (datetime.utcnow() - start_time).total_seconds()
+
+        logger.info(
+            f"Full processing completed: {len(merged_segments)} segments, "
+            f"{unique_speakers} speakers, {processing_time:.2f}s"
+        )
+
+        return TranscriptionWithSpeakersResponse(
+            status="success",
+            transcript_path=f"/app/data/transcripts/{transcript_filename}",
+            num_segments=len(merged_segments),
+            num_speakers=unique_speakers,
+            duration=duration,
+            language=language,
+            processing_time=round(processing_time, 2)
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Full processing error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/")
 async def root():
     """
@@ -520,7 +643,8 @@ async def root():
         "endpoints": {
             "POST /transcribe": "Transcription only",
             "POST /diarize": "Diarization only",
-            "POST /transcribe-with-speakers": "Transcription + diarization",
+            "POST /transcribe-with-speakers": "Transcription + diarization (upload)",
+            "POST /transcribe-with-speakers-path": "Transcription + diarization (file path, fast)",
             "GET /health": "Health check",
             "GET /models/info": "Model information",
             "GET /docs": "Swagger UI",

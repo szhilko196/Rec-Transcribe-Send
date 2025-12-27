@@ -77,8 +77,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           } else {
             logToServiceWorker('log', 'Reusing existing ScreenRecorder instance');
           }
-          await recorder.startRecording(message.audioOnly);
-          logToServiceWorker('log', 'Recording started successfully');
+          // Pass videoBitrate and videoQuality from message
+          await recorder.startRecording(
+            message.audioOnly,
+            message.videoBitrate || 800000,
+            message.videoQuality || '1080p'
+          );
+          logToServiceWorker('log', `Recording started successfully (bitrate: ${message.videoBitrate || 800000} bps, quality: ${message.videoQuality || '1080p'})`);
           sendResponse({ success: true });
           break;
 

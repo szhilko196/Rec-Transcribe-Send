@@ -18,6 +18,7 @@ import shutil
 import smtplib
 import subprocess
 import sys
+import requests
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -36,13 +37,23 @@ except ImportError as e:
     print(f"[WARNING] Speaker recognition module not available: {e}")
     SPEAKER_RECOGNITION_AVAILABLE = False
 
-# Load environment variables from .env
-load_dotenv()
+# Load environment variables from root .env file
+# Use explicit path to ensure we load the correct .env file
+ROOT_DIR = Path(__file__).parent.parent.parent  # Go up to project root
+ENV_PATH = ROOT_DIR / '.env'
+# Use override=True to override system environment variables
+load_dotenv(ENV_PATH, override=True)
 
 # Configuration
 FFMPEG_SERVICE_URL = os.getenv("FFMPEG_SERVICE_URL", "http://localhost:8002")
 TRANSCRIPTION_SERVICE_URL = os.getenv("TRANSCRIPTION_SERVICE_URL", "http://localhost:8003")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
+
+# Diarization configuration
+CHUNK_DURATION_SEC = int(os.getenv("CHUNK_DURATION_SEC", "1800"))  # Default: 30 minutes
+DIARIZATION_MIN_SPEAKERS = int(os.getenv("DIARIZATION_MIN_SPEAKERS", "1")) if os.getenv("DIARIZATION_MIN_SPEAKERS") else None
+DIARIZATION_MAX_SPEAKERS = int(os.getenv("DIARIZATION_MAX_SPEAKERS", "10")) if os.getenv("DIARIZATION_MAX_SPEAKERS") else None
+DIARIZATION_NUM_SPEAKERS = int(os.getenv("DIARIZATION_NUM_SPEAKERS")) if os.getenv("DIARIZATION_NUM_SPEAKERS") else None
 
 # Path to data directory from environment variable (with fallback to 'data')
 DATA_DIR = Path(os.getenv('DATA_PATH', 'data'))
@@ -58,7 +69,7 @@ PROMPTS_CONFIG_PATH = CONFIG_DIR / "prompts.json"
 def run_curl(url: str, method: str = "POST", data_file: str = None,
              field_name: str = "file", timeout: int = 300) -> dict:
     """
-    Execute HTTP request via curl (to bypass antivirus blocking)
+    Execute HTTP request (using requests library to handle Cyrillic filenames)
 
     Args:
         url: URL for the request
@@ -72,43 +83,51 @@ def run_curl(url: str, method: str = "POST", data_file: str = None,
     """
     try:
         if method.upper() == "POST" and data_file:
-            cmd = [
-                "curl", "-X", "POST",
-                "-F", f"{field_name}=@{data_file}",
-                "-s",  # Silent mode
-                "--max-time", str(timeout),
-                url
-            ]
+            # Use requests library - it handles Cyrillic filenames properly
+            # For large file uploads + long processing, disable timeout
+            # Let the Docker service handle its own timeouts
+            with open(data_file, 'rb') as f:
+                files = {field_name: f}
+                response = requests.post(url, files=files, timeout=None)
+
+            if response.status_code != 200:
+                return {
+                    "status": "error",
+                    "error": f"HTTP {response.status_code}: {response.text}"
+                }
+
+            # Parse JSON response
+            try:
+                data = response.json()
+                return {"status": "success", "data": data}
+            except json.JSONDecodeError:
+                return {
+                    "status": "error",
+                    "error": "Failed to parse JSON",
+                    "response": response.text
+                }
         else:
-            cmd = ["curl", "-s", "--max-time", str(timeout), url]
+            # GET request
+            # Timeout as tuple: (connect_timeout, read_timeout)
+            timeout_tuple = (30, timeout)
+            response = requests.get(url, timeout=timeout_tuple)
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout + 10
-        )
+            if response.status_code != 200:
+                return {
+                    "status": "error",
+                    "error": f"HTTP {response.status_code}: {response.text}"
+                }
 
-        if result.returncode != 0:
-            return {
-                "status": "error",
-                "error": f"curl exited with code {result.returncode}",
-                "stderr": result.stderr
-            }
+            try:
+                data = response.json()
+                return {"status": "success", "data": data}
+            except json.JSONDecodeError:
+                return {"status": "success", "data": {"text": response.text}}
 
-        # Parse JSON response
-        try:
-            data = json.loads(result.stdout)
-            return {"status": "success", "data": data}
-        except json.JSONDecodeError:
-            return {
-                "status": "error",
-                "error": "Failed to parse JSON",
-                "response": result.stdout
-            }
-
-    except subprocess.TimeoutExpired:
+    except requests.exceptions.Timeout:
         return {"status": "error", "error": f"Timeout ({timeout}s)"}
+    except requests.exceptions.RequestException as e:
+        return {"status": "error", "error": str(e)}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -298,7 +317,7 @@ def extract_audio(video_path: Path, result_folder: Path) -> Dict:
 
     Args:
         video_path: Path to video file
-        result_folder: Folder to save results
+        result_folder: Folder to save results (will be created if extraction succeeds)
 
     Returns:
         Information about extracted audio
@@ -320,14 +339,64 @@ def extract_audio(video_path: Path, result_folder: Path) -> Dict:
 
     data = result["data"]
 
-    # Copy audio to results folder
-    audio_filename = Path(data['audio_path']).name
-    source_audio = DATA_DIR / "audio" / audio_filename
-    dest_audio = result_folder / "audio.wav"
+    # Debug: show what FFmpeg service returned
+    print(f"  FFmpeg service response: {data}")
 
-    if source_audio.exists():
-        shutil.copy2(source_audio, dest_audio)
-        source_audio.unlink()  # Delete from temporary folder
+    # Convert Docker path to host path
+    # FFmpeg service returns /app/data/audio/... (Docker internal path)
+    # We need to convert it to actual host path
+    if 'audio_path' not in data:
+        raise Exception(
+            f"FFmpeg service response missing 'audio_path' field.\n"
+            f"  Response received: {data}\n"
+            f"  This usually means the service encountered an error."
+        )
+
+    audio_path_from_service = data['audio_path']
+
+    # If path starts with /app/data, replace with DATA_DIR
+    if audio_path_from_service.startswith('/app/data'):
+        # Docker path -> host path
+        relative_path = audio_path_from_service.replace('/app/data/', '')
+        source_audio = DATA_DIR / relative_path.replace('/', os.sep)
+    else:
+        # Already a host path or relative path
+        audio_filename = Path(audio_path_from_service).name
+        source_audio = DATA_DIR / "audio" / audio_filename
+
+    print(f"  Looking for audio at: {source_audio}")
+
+    # Check if file exists
+    # On Windows with symlinks (like YandexDisk), Python may not see files through symlink
+    # So we try both the configured path and the resolved real path
+    if not source_audio.exists():
+        # Try resolving symlinks to real path
+        source_audio_resolved = source_audio.resolve()
+        print(f"  Also trying resolved path: {source_audio_resolved}")
+
+        if source_audio_resolved.exists():
+            print(f"  Found at resolved path (symlink issue detected)")
+            source_audio = source_audio_resolved
+        else:
+            raise FileNotFoundError(
+                f"Source audio file not found at either location:\n"
+                f"  Configured path: {source_audio}\n"
+                f"  Resolved path: {source_audio_resolved}\n"
+                f"  FFmpeg service returned: {audio_path_from_service}"
+            )
+
+    # Create results folder only AFTER successful extraction
+    result_folder.mkdir(parents=True, exist_ok=True)
+    print(f"[OK] Created results folder: {result_folder}")
+
+    # Copy audio to results folder
+    dest_audio = result_folder / "audio.wav"
+    shutil.copy2(source_audio, dest_audio)
+    source_audio.unlink()  # Delete from temporary folder
+
+    # Verify destination file exists
+    if not dest_audio.exists():
+        raise FileNotFoundError(f"Failed to copy audio to: {dest_audio}")
 
     print(f"[OK] Audio extracted: {dest_audio.name}")
     print(f"  Duration: {data.get('duration')} sec")
@@ -425,21 +494,35 @@ def transcribe_audio_only_chunked(audio_path: Path, chunk_duration_sec: int = 18
     chunk_paths = split_audio_for_diarization(audio_path, chunk_duration_sec)
 
     if len(chunk_paths) == 1:
-        # Short audio - transcribe as whole
-        print(f"  Transcribing entire audio...")
-        result = run_curl(
-            f"{TRANSCRIPTION_SERVICE_URL}/transcribe?language=ru&beam_size=5",
-            method="POST",
-            data_file=str(audio_path),
-            field_name="file",
-            timeout=7200
+        # Short audio - transcribe as whole using file path (no upload!)
+        print(f"  Transcribing entire audio (using file path)...")
+
+        # Calculate relative path from DATA_DIR for Docker container
+        try:
+            relative_path = audio_path.relative_to(DATA_DIR)
+            docker_path = str(relative_path).replace('\\', '/')
+        except ValueError:
+            raise Exception(f"Audio file {audio_path} is not in DATA_DIR {DATA_DIR}")
+
+        # Use /transcribe-with-speakers-path (even though we only need transcription)
+        # This avoids file upload - we'll extract only transcription segments
+        response = requests.post(
+            f"{TRANSCRIPTION_SERVICE_URL}/transcribe-with-speakers-path",
+            params={
+                "file_path": docker_path,
+                "language": "ru",
+                "beam_size": 5
+            },
+            timeout=14400  # 4 hours for CPU transcription
         )
 
-        if result["status"] != "success":
-            raise Exception(f"Transcription error: {result.get('error')}")
+        if response.status_code != 200:
+            raise Exception(f"Transcription error: HTTP {response.status_code}: {response.text}")
+
+        data = response.json()
 
         # Read result
-        transcript_filename = Path(result["data"]['transcript_path']).name
+        transcript_filename = Path(data['transcript_path']).name
         source_transcript = DATA_DIR / "transcripts" / transcript_filename
 
         with open(source_transcript, 'r', encoding='utf-8') as f:
@@ -450,30 +533,46 @@ def transcribe_audio_only_chunked(audio_path: Path, chunk_duration_sec: int = 18
         return transcript_data
 
     else:
-        # Long audio - transcribe in chunks
-        print(f"\n  Processing {len(chunk_paths)} audio chunks...")
+        # Long audio - transcribe in chunks using file paths (no upload!)
+        print(f"\n  Processing {len(chunk_paths)} audio chunks (using file paths)...")
         all_transcripts = []
 
         for i, chunk_path in enumerate(chunk_paths):
             print(f"\n  Transcribing chunk {i+1}/{len(chunk_paths)}: {chunk_path.name}")
 
-            result = run_curl(
-                f"{TRANSCRIPTION_SERVICE_URL}/transcribe?language=ru&beam_size=5",
-                method="POST",
-                data_file=str(chunk_path),
-                field_name="file",
-                timeout=7200
-            )
-
-            if result["status"] != "success":
+            # Calculate relative path for this chunk
+            try:
+                relative_path = chunk_path.relative_to(DATA_DIR)
+                docker_path = str(relative_path).replace('\\', '/')
+            except ValueError:
                 # Delete temporary files on error
                 for cp in chunk_paths:
                     if cp.exists() and cp != audio_path:
                         cp.unlink()
-                raise Exception(f"Error transcribing chunk {i+1}: {result.get('error')}")
+                raise Exception(f"Chunk file {chunk_path} is not in DATA_DIR {DATA_DIR}")
+
+            # Use file path endpoint (no upload)
+            response = requests.post(
+                f"{TRANSCRIPTION_SERVICE_URL}/transcribe-with-speakers-path",
+                params={
+                    "file_path": docker_path,
+                    "language": "ru",
+                    "beam_size": 5
+                },
+                timeout=14400  # 4 hours per chunk for CPU transcription
+            )
+
+            if response.status_code != 200:
+                # Delete temporary files on error
+                for cp in chunk_paths:
+                    if cp.exists() and cp != audio_path:
+                        cp.unlink()
+                raise Exception(f"Error transcribing chunk {i+1}: HTTP {response.status_code}: {response.text}")
+
+            data = response.json()
 
             # Read chunk result
-            transcript_filename = Path(result["data"]['transcript_path']).name
+            transcript_filename = Path(data['transcript_path']).name
             source_transcript = DATA_DIR / "transcripts" / transcript_filename
 
             with open(source_transcript, 'r', encoding='utf-8') as f:
@@ -574,7 +673,7 @@ def diarize_full_audio(audio_path: Path, min_speakers: Optional[int] = None, max
         method="POST",
         data_file=str(audio_path),
         field_name="file",
-        timeout=7200  # 2 hours for very long files
+        timeout=14400  # 4 hours for diarization on very long files
     )
 
     if result["status"] != "success":
@@ -691,23 +790,37 @@ def transcribe_with_speakers_chunked(audio_path: Path, result_folder: Path, chun
     # Extract transcription segments
     transcription_segments = transcription_data.get('transcript', [])
 
+    # Calculate relative path from DATA_DIR for Docker container
+    # Docker has C:\YandexDisk\DIASOFT\VideoPars\data mounted as /app/data
+    # So C:\YandexDisk\DIASOFT\VideoPars\data\audio\file.wav -> audio/file.wav
+    try:
+        relative_path = audio_path.relative_to(DATA_DIR)
+        # Use forward slashes for Docker/Linux paths
+        docker_path = str(relative_path).replace('\\', '/')
+    except ValueError:
+        raise Exception(f"Audio file {audio_path} is not in DATA_DIR {DATA_DIR}")
+
     # Need to get diarization segments - but /diarize API only returns statistics
     # So use old method for short audio
     if duration_sec <= chunk_duration_sec:
-        # Short audio - use transcribe-with-speakers
-        print(f"  Audio is short, using combined endpoint...")
-        result = run_curl(
-            f"{TRANSCRIPTION_SERVICE_URL}/transcribe-with-speakers?language=ru&beam_size=5",
-            method="POST",
-            data_file=str(audio_path),
-            field_name="file",
-            timeout=7200
+        # Short audio - use transcribe-with-speakers with file path (no upload!)
+        print(f"  Audio is short, using combined endpoint (file path: {docker_path})...")
+
+        # Use new path-based endpoint (no file upload needed)
+        response = requests.post(
+            f"{TRANSCRIPTION_SERVICE_URL}/transcribe-with-speakers-path",
+            params={
+                "file_path": docker_path,
+                "language": "ru",
+                "beam_size": 5
+            },
+            timeout=14400  # 4 hours for very long videos
         )
 
-        if result["status"] != "success":
-            raise Exception(f"Transcription error: {result.get('error')}")
+        if response.status_code != 200:
+            raise Exception(f"Transcription error: HTTP {response.status_code}: {response.text}")
 
-        data = result["data"]
+        data = response.json()
 
         # Copy result
         transcript_filename = Path(data['transcript_path']).name
@@ -719,24 +832,25 @@ def transcribe_with_speakers_chunked(audio_path: Path, result_folder: Path, chun
             source_transcript.unlink()
 
     else:
-        # Long audio - use combined approach
+        # Long audio - use combined approach with file path (no upload!)
         # Transcription is ready, now apply diarization to full file
-        print(f"  Applying diarization to transcription...")
+        print(f"  Applying diarization to transcription (file path: {docker_path})...")
 
-        # Call transcribe-with-speakers to get diarization segments
-        # and use transcription from already ready result
-        result = run_curl(
-            f"{TRANSCRIPTION_SERVICE_URL}/transcribe-with-speakers?language=ru&beam_size=5",
-            method="POST",
-            data_file=str(audio_path),
-            field_name="file",
-            timeout=7200
+        # Use new path-based endpoint (no file upload needed)
+        response = requests.post(
+            f"{TRANSCRIPTION_SERVICE_URL}/transcribe-with-speakers-path",
+            params={
+                "file_path": docker_path,
+                "language": "ru",
+                "beam_size": 5
+            },
+            timeout=14400  # 4 hours for very long videos
         )
 
-        if result["status"] != "success":
-            raise Exception(f"Processing error: {result.get('error')}")
+        if response.status_code != 200:
+            raise Exception(f"Processing error: HTTP {response.status_code}: {response.text}")
 
-        data = result["data"]
+        data = response.json()
 
         # Copy result with correct diarization
         transcript_filename = Path(data['transcript_path']).name
@@ -792,7 +906,7 @@ def transcribe_with_speakers_chunked_old(audio_path: Path, result_folder: Path, 
             method="POST",
             data_file=str(audio_path),
             field_name="file",
-            timeout=7200
+            timeout=14400  # 4 hours for CPU processing
         )
 
         if result["status"] != "success":
@@ -807,13 +921,14 @@ def transcribe_with_speakers_chunked_old(audio_path: Path, result_folder: Path, 
 
         for i, chunk_path in enumerate(chunk_paths):
             print(f"\n  Processing chunk {i+1}/{len(chunk_paths)}: {chunk_path.name}")
+            print(f"  Note: This may take 2-4 hours per chunk with CPU processing...")
 
             result = run_curl(
                 f"{TRANSCRIPTION_SERVICE_URL}/transcribe-with-speakers?language=ru&beam_size=5",
                 method="POST",
                 data_file=str(chunk_path),
                 field_name="file",
-                timeout=7200
+                timeout=14400  # 4 hours per chunk for CPU processing
             )
 
             if result["status"] != "success":
@@ -899,7 +1014,20 @@ def transcribe_with_speakers(audio_path: Path, result_folder: Path) -> Dict:
     Returns:
         Transcription data with speakers
     """
-    return transcribe_with_speakers_chunked(audio_path, result_folder, chunk_duration_sec=1800)
+    # Read settings from environment variables
+    use_new_architecture = os.getenv("USE_NEW_DIARIZATION_ARCHITECTURE", "true").lower() == "true"
+    chunk_duration_sec = CHUNK_DURATION_SEC
+
+    print(f"[CONFIG] Chunk duration: {chunk_duration_sec}s ({chunk_duration_sec/60:.0f} min)")
+    print(f"[CONFIG] Architecture: {'NEW (full file diarization)' if use_new_architecture else 'OLD (chunked diarization)'}")
+    print(f"[CONFIG] Min speakers: {DIARIZATION_MIN_SPEAKERS}, Max speakers: {DIARIZATION_MAX_SPEAKERS}")
+
+    return transcribe_with_speakers_chunked(
+        audio_path,
+        result_folder,
+        chunk_duration_sec=chunk_duration_sec,
+        use_new_architecture=use_new_architecture
+    )
 
 
 def apply_speaker_recognition(audio_path: Path, transcript_data: Dict, recognizer: Optional['SpeakerRecognizer']) -> Dict:
@@ -1328,9 +1456,14 @@ Format: structured text with headings and lists."""
     print("  Generating brief summary...")
     summary_prompt = prompts['summary_prompt_template'].format(transcript=formatted_transcript)
 
+    # Debug: show first 200 chars of prompt
+    print(f"[DEBUG] Summary prompt (first 200 chars): {summary_prompt[:200]}")
+
     summary_response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=2000,
+        timeout=300.0,  # 5 minutes timeout for summary
+        system="Ты - помощник для анализа встреч. Отвечай ТОЛЬКО на русском языке. You must answer in Russian language only.",
         messages=[
             {"role": "user", "content": summary_prompt}
         ]
@@ -1342,9 +1475,14 @@ Format: structured text with headings and lists."""
     print("  Generating protocol with commitments...")
     protocol_prompt = prompts['protocol_prompt_template'].format(transcript=formatted_transcript)
 
+    # Debug: show first 200 chars of prompt
+    print(f"[DEBUG] Protocol prompt (first 200 chars): {protocol_prompt[:200]}")
+
     protocol_response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=4000,
+        timeout=600.0,  # 10 minutes timeout for protocol (longer than summary)
+        system="Ты - помощник для анализа встреч. Отвечай ТОЛЬКО на русском языке. You must answer in Russian language only.",
         messages=[
             {"role": "user", "content": protocol_prompt}
         ]
@@ -1426,10 +1564,22 @@ def main(video_path_str: str) -> Dict:
     # Load speaker recognizer (once at start)
     recognizer = load_speaker_recognizer()
 
-    # Step 0: Create results folder
-    result_folder = create_result_folder(video_path)
+    # Log speaker recognition status clearly
+    if recognizer is not None:
+        print("\n[OK] SPEAKER RECOGNITION: ENABLED")
+    else:
+        print("\n[INFO] SPEAKER RECOGNITION: DISABLED")
 
-    # Step 1: Extract audio
+    # NOTE: We create results folder AFTER successful audio extraction
+    # to avoid empty folders on failure
+    result_folder = None
+
+    # Step 1: Extract audio (this will create the results folder)
+    video_name = video_path.stem
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder_name = f"{video_name}_{timestamp}"
+    result_folder = RESULTS_DIR / folder_name
+
     audio_info = extract_audio(video_path, result_folder)
 
     # Step 2: Transcription with diarization

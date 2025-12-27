@@ -31,7 +31,37 @@ class TelemostYandexHandler(BasePlatformHandler):
             # Navigate to meeting
             page.goto(meeting.meeting_link, wait_until='networkidle', timeout=30000)
 
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(2000)
+
+            # Handle browser permission dialog for opening external app
+            # This is a Chrome dialog, not a page element, so we handle it via page event
+            # Set up listener for any dialog that appears
+            def handle_dialog(dialog):
+                self.logger.info(f"Browser dialog appeared: {dialog.message}")
+                dialog.dismiss()  # Dismiss/Cancel the dialog
+                self.logger.info("Dismissed browser dialog to stay in browser")
+
+            page.on("dialog", handle_dialog)
+
+            page.wait_for_timeout(2000)
+
+            # Also try to click "Отмена" button if it's a page element (not browser dialog)
+            cancel_app_selectors = [
+                'button:has-text("Отмена")',  # Cancel button (Russian)
+                'button:has-text("Cancel")',   # Cancel button (English)
+                'button:has-text("Отказаться")',  # Decline button
+            ]
+
+            for selector in cancel_app_selectors:
+                try:
+                    element = page.query_selector(selector)
+                    if element and element.is_visible():
+                        self.logger.info(f"Clicking cancel button to stay in browser: {selector}")
+                        page.click(selector, timeout=5000)
+                        page.wait_for_timeout(2000)
+                        break
+                except:
+                    continue
 
             # Click "Continue in browser" button if present
             continue_selectors = [

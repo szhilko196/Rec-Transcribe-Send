@@ -65,6 +65,11 @@ SCRIPT_DIR = Path(__file__).parent.parent  # Project root directory
 CONFIG_DIR = SCRIPT_DIR / "config"
 PROMPTS_CONFIG_PATH = CONFIG_DIR / "prompts.json"
 
+# RAGFlow configuration
+RAGFLOW_URL = os.getenv("RAGFLOW_URL", "http://localhost:9380")
+ENABLE_RAG_INDEXING = os.getenv("ENABLE_RAG_INDEXING", "false").lower() == "true"
+RAGFLOW_UPLOADER_SCRIPT = SCRIPT_DIR / "RAG-search" / "scripts" / "ragflow_uploader.py"
+
 
 def run_curl(url: str, method: str = "POST", data_file: str = None,
              field_name: str = "file", timeout: int = 300) -> dict:
@@ -288,6 +293,44 @@ def extract_email_from_filename(filename: str) -> Optional[str]:
 
     print("[INFO] Email not found in filename")
     return None
+
+
+def upload_to_ragflow(result_folder: Path) -> Optional[str]:
+    """
+    Upload meeting to RAGFlow with contextual enrichment
+
+    Args:
+        result_folder: Path to meeting result folder
+
+    Returns:
+        dataset_id if successful, None otherwise
+    """
+    print(f"\n[STEP 4.5] Uploading to RAGFlow...")
+
+    try:
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, str(RAGFLOW_UPLOADER_SCRIPT), str(result_folder)],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minutes (includes contextual enrichment via Claude API)
+        )
+
+        if result.returncode == 0:
+            dataset_id = result.stdout.strip().split('\n')[-1]  # Last line is dataset_id
+            print(f"[OK] RAGFlow indexed: dataset_id={dataset_id}")
+            return dataset_id
+        else:
+            print(f"[WARNING] RAGFlow upload failed:")
+            print(f"  {result.stderr}")
+            return None
+
+    except subprocess.TimeoutExpired:
+        print(f"[WARNING] RAGFlow upload timed out (may still be processing)")
+        return None
+    except Exception as e:
+        print(f"[WARNING] RAGFlow upload error: {e}")
+        return None
 
 
 def create_result_folder(video_path: Path) -> Path:
@@ -1650,6 +1693,20 @@ def main(video_path_str: str) -> Dict:
 
     print(f"  - metadata.json (processing metadata)")
     print("\n[OK] All files saved in one folder!")
+
+    # Step 4.5: Upload to RAGFlow (if enabled)
+    if ENABLE_RAG_INDEXING:
+        dataset_id = upload_to_ragflow(result_folder)
+        result["rag_indexed"] = dataset_id is not None
+        if dataset_id:
+            result["rag_indexed_at"] = datetime.utcnow().isoformat()
+            result["ragflow_dataset_id"] = dataset_id
+
+            # Update metadata.json with RAG status
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+    else:
+        result["rag_indexed"] = False
 
     # Step 5: Send email (if email found in filename)
     recipient_email = extract_email_from_filename(video_path.name)

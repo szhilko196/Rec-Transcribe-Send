@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # RAGFlow main application
+  ragflow:
+    image: infiniflow/ragflow:latest
+    container_name: ragflow
+    ports:
+      - "9380:9380"  # Web UI
+      - "9381:9381"  # API
+    volumes:
+      - ./ragflow_data:/ragflow/data
+      - ./ragflow_logs:/ragflow/logs
+      - C:/YandexDisk/DIASOFT/VideoPars/data:/ragflow/upload  # Meeting files access
+    environment:
+      - TZ=Europe/Moscow
+      # MySQL connection
+      - MYSQL_PASSWORD=infiniflow
+      # Redis connection
+      - REDIS_PASSWORD=infiniflow
+      # Embedding model
+      - EMBEDDING_MODEL=BAAI/bge-m3
+      - EMBEDDING_DEVICE=cpu  # Change to 'cuda' if GPU available
+      # Vector engine
+      - VECTOR_ENGINE=infinity
+      # Reranker model
+      - RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+      # LLM configuration
+      - LLM_PROVIDER=claude
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - CLAUDE_MODEL=claude-sonnet-4-5-20250929
+    depends_on:
+      - ragflow-mysql
+      - ragflow-redis
+      - infinity
+    restart: unless-stopped
+    networks:
+      - ragflow-net
+
+  # MySQL database (RAGFlow metadata storage)
+  ragflow-mysql:
+    image: mysql:8.0
+    container_name: ragflow-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=infiniflow
+      - MYSQL_DATABASE=ragflow
+      - MYSQL_USER=ragflow
+      - MYSQL_PASSWORD=infiniflow
+      - TZ=Europe/Moscow
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - ragflow-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pinfiniflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (RAGFlow caching)
+  ragflow-redis:
+    image: redis:7-alpine
+    container_name: ragflow-redis
+    command: redis-server --requirepass infiniflow
+    volumes:
+      - ./redis_data:/data
+    restart: unless-stopped
+    networks:
+      - ragflow-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Infinity vector engine
+  infinity:
+    image: michaelf34/infinity:latest
+    container_name: ragflow-infinity
+    ports:
+      - "7997:7997"
+    environment:
+      - MODEL_ID=BAAI/bge-m3
+      - DEVICE=cpu  # Change to 'cuda' if GPU available
+      - BATCH_SIZE=32
+    volumes:
+      - ./infinity_models:/app/models
+    restart: unless-stopped
+    networks:
+      - ragflow-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7997/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  ragflow-net:
+    driver: bridge
+
+# Volume definitions for persistence
+volumes:
+  ragflow_data:
+  ragflow_logs:
+  mysql_data:
+  redis_data:
+  infinity_models:

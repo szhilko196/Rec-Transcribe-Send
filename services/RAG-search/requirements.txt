@@ -1,0 +1,8 @@
+# RAG-search scripts dependencies
+# Install with: pip install -r requirements.txt
+
+# Anthropic Claude API client (for contextual enrichment)
+anthropic>=0.47.0
+
+# HTTP client for RAGFlow API
+requests>=2.31.0

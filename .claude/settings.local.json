@@ -29,7 +29,10 @@
       "Bash(services/transcription_orchestrator/venv/Scripts/python.exe:*)",
       "Bash(nvidia-smi:*)",
       "Bash(cmd /c \"timeout /t 120 /nobreak >nul\")",
-      "Bash(docker-compose ps:*)"
+      "Bash(docker-compose ps:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.openwebui.com)",
+      "Bash(docker-compose up:*)"
     ],
     "deny": [],
     "ask": []

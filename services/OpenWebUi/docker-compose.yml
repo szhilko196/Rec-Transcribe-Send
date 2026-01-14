@@ -1,0 +1,123 @@
+services:
+  # LiteLLM Proxy - Translates OpenAI API format to Claude/Anthropic API
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: openwebui-litellm
+    env_file:
+      - ../../.env  # Load CLAUDE_API_KEY
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+    environment:
+      - LITELLM_MASTER_KEY=sk-litellm-master-key
+    command: --config /app/config.yaml --port 4000
+    restart: unless-stopped
+    networks:
+      - openwebui-network
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: openwebui-qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC
+    volumes:
+      - ./qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - openwebui-network
+
+  # OpenWebUI Main Service
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    env_file:
+      - ../../.env  # Load root .env file for CLAUDE_API_KEY
+    ports:
+      - "3000:8080"
+    volumes:
+      - ./openwebui_data:/app/backend/data
+      - ./models_cache:/root/.cache/huggingface  # For BGE-M3 and reranker models
+      - C:/YandexDisk/DIASOFT/VideoPars/data:/data:ro  # Read-only access to meetings
+    environment:
+      # Vector Database Configuration
+      - VECTOR_DB=qdrant
+      - QDRANT_URI=http://qdrant:6333
+      - ENABLE_QDRANT_MULTITENANCY_MODE=true
+      - QDRANT_HNSW_M=16
+      - QDRANT_TIMEOUT=30
+
+      # Embedding Configuration (SentenceTransformers)
+      - RAG_EMBEDDING_ENGINE=  # Empty = use default SentenceTransformers
+      - RAG_EMBEDDING_MODEL=BAAI/bge-m3
+      - RAG_EMBEDDING_MODEL_AUTO_UPDATE=true
+      - RAG_EMBEDDING_MODEL_TRUST_REMOTE_CODE=false
+
+      # Reranking Configuration
+      - RAG_RERANKING_MODEL=BAAI/bge-reranker-v2-m3
+      - RAG_RERANKING_MODEL_AUTO_UPDATE=true
+      - RAG_TOP_K=8
+      - RAG_TOP_K_RERANKER=3
+      - RAG_RELEVANCE_THRESHOLD=0.3
+
+      # Hybrid Search Configuration
+      - ENABLE_RAG_HYBRID_SEARCH=true
+      - RAG_HYBRID_BM25_WEIGHT=0.5
+
+      # Document Processing Configuration
+      - CHUNK_SIZE=1000
+      - CHUNK_OVERLAP=100
+      - CHUNK_MIN_SIZE_TARGET=0
+      - RAG_TEXT_SPLITTER=character
+      - ENABLE_MARKDOWN_HEADER_TEXT_SPLITTER=true
+
+      # Claude API via LiteLLM Proxy (translates to OpenAI-compatible format)
+      - OPENAI_API_BASE_URLS=http://litellm:4000/v1
+      - OPENAI_API_KEYS=sk-litellm-master-key
+
+      # Performance Configuration
+      - ENABLE_ASYNC_EMBEDDING=true
+      - RAG_EMBEDDING_BATCH_SIZE=1
+
+      # Query Generation
+      - ENABLE_RETRIEVAL_QUERY_GENERATION=true
+      - ENABLE_QUERIES_CACHE=false
+
+      # UI Configuration
+      - WEBUI_NAME=Meeting Transcriptions RAG
+      - WEBUI_AUTH=true
+      - DEFAULT_USER_ROLE=user
+
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      litellm:
+        condition: service_started
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 60s
+    restart: unless-stopped
+    networks:
+      - openwebui-network
+
+networks:
+  openwebui-network:
+    driver: bridge
+
+volumes:
+  qdrant_data:
+  openwebui_data:
+  models_cache:

@@ -65,6 +65,11 @@ SCRIPT_DIR = Path(__file__).parent.parent  # Project root directory
 CONFIG_DIR = SCRIPT_DIR / "config"
 PROMPTS_CONFIG_PATH = CONFIG_DIR / "prompts.json"
 
+# OpenWebUI RAG Configuration
+ENABLE_OPENWEBUI_RAG = os.getenv("ENABLE_OPENWEBUI_RAG", "false").lower() == "true"
+OPENWEBUI_URL = os.getenv("OPENWEBUI_URL", "http://localhost:3000")
+OPENWEBUI_UPLOADER_SCRIPT = SCRIPT_DIR / "OpenWebUi" / "scripts" / "openwebui_uploader.py"
+
 
 def run_curl(url: str, method: str = "POST", data_file: str = None,
              field_name: str = "file", timeout: int = 300) -> dict:
@@ -1530,6 +1535,52 @@ def organize_files(video_path: Path, result_folder: Path):
     print(f"[OK] Video copied: {dest_video.name}")
 
 
+def upload_to_openwebui(result_folder: Path) -> bool:
+    """
+    Upload meeting to OpenWebUI Knowledge Base
+
+    Args:
+        result_folder: Path to result folder
+
+    Returns:
+        bool: True if upload successful, False otherwise
+    """
+    if not OPENWEBUI_UPLOADER_SCRIPT.exists():
+        print(f"[ERROR] OpenWebUI uploader script not found: {OPENWEBUI_UPLOADER_SCRIPT}")
+        return False
+
+    print("\n" + "="*60)
+    print("[STEP 4.5] Uploading to OpenWebUI Knowledge Base")
+    print("="*60 + "\n")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(OPENWEBUI_UPLOADER_SCRIPT), str(result_folder)],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minutes timeout
+        )
+
+        # Print output from uploader script
+        print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+
+        if result.returncode == 0:
+            print("[OK] OpenWebUI upload completed successfully")
+            return True
+        else:
+            print(f"[ERROR] OpenWebUI upload failed with exit code {result.returncode}")
+            return False
+
+    except subprocess.TimeoutExpired:
+        print("[ERROR] OpenWebUI upload timed out (300s)")
+        return False
+    except Exception as e:
+        print(f"[ERROR] OpenWebUI upload failed: {e}")
+        return False
+
+
 def main(video_path_str: str) -> Dict:
     """
     Main orchestrator function
@@ -1611,6 +1662,18 @@ def main(video_path_str: str) -> Dict:
     # Step 4: Copy source video
     organize_files(video_path, result_folder)
 
+    # Step 4.5: Upload to OpenWebUI (if enabled)
+    openwebui_rag_indexed = False
+    if ENABLE_OPENWEBUI_RAG:
+        success = upload_to_openwebui(result_folder)
+        openwebui_rag_indexed = success
+        if success:
+            print("\n[INFO] Meeting indexed in OpenWebUI Knowledge Base")
+        else:
+            print("\n[WARNING] OpenWebUI upload failed, but meeting was processed successfully")
+    else:
+        print("\n[INFO] OpenWebUI RAG indexing disabled (ENABLE_OPENWEBUI_RAG=false)")
+
     # Final report
     print("\n" + "=" * 80)
     print("PROCESSING COMPLETE")
@@ -1640,7 +1703,8 @@ def main(video_path_str: str) -> Dict:
             "transcript_txt": str(result_folder / "transcript_readable.txt"),
             "summary": str(result_folder / "summary.md") if claude_info else None,
             "protocol": str(result_folder / "protocol.md") if claude_info else None
-        }
+        },
+        "openwebui_rag_indexed": openwebui_rag_indexed
     }
 
     # Save metadata

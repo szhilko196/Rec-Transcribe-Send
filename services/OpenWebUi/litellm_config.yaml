@@ -1,0 +1,29 @@
+model_list:
+  # Claude Sonnet 3.5 - Best for complex reasoning and RAG
+  - model_name: claude-sonnet-3.5
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/CLAUDE_API_KEY
+      max_tokens: 8192
+
+  # Claude Haiku 3.5 - Fast and cost-effective
+  - model_name: claude-haiku-3.5
+    litellm_params:
+      model: anthropic/claude-3-5-haiku-20241022
+      api_key: os.environ/CLAUDE_API_KEY
+      max_tokens: 8192
+
+  # Claude Opus 3 - Most capable for complex tasks
+  - model_name: claude-opus-3
+    litellm_params:
+      model: anthropic/claude-3-opus-20240229
+      api_key: os.environ/CLAUDE_API_KEY
+      max_tokens: 4096
+
+general_settings:
+  master_key: sk-litellm-master-key
+
+litellm_settings:
+  drop_params: true  # Drop unsupported params for compatibility
+  success_callback: []
+  failure_callback: []

@@ -1,0 +1,35 @@
+# Data directories (excluded from git)
+qdrant_data/
+openwebui_data/
+models_cache/
+
+# Test data
+test_data/
+
+# Environment files with secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

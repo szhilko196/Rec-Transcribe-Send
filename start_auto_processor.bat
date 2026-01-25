@@ -19,8 +19,13 @@ echo.
 echo Checking environment...
 echo.
 
-REM Read DATA_PATH from .env file
+REM Read configuration from .env file
 set "DATA_PATH=data"
+set "ENABLE_SPEAKER_RECOGNITION=false"
+set "ENABLE_OPENWEBUI_RAG=false"
+set "RECOGNITION_THRESHOLD=0.75"
+set "MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG=2"
+
 if exist ".env" (
     for /f "usebackq tokens=1,* delims==" %%a in (".env") do (
         if /i "%%a"=="DATA_PATH" (
@@ -28,6 +33,10 @@ if exist ".env" (
             REM Replace forward slashes with backslashes for Windows
             set "DATA_PATH=!DATA_PATH:/=\!"
         )
+        if /i "%%a"=="ENABLE_SPEAKER_RECOGNITION" set "ENABLE_SPEAKER_RECOGNITION=%%b"
+        if /i "%%a"=="ENABLE_OPENWEBUI_RAG" set "ENABLE_OPENWEBUI_RAG=%%b"
+        if /i "%%a"=="RECOGNITION_THRESHOLD" set "RECOGNITION_THRESHOLD=%%b"
+        if /i "%%a"=="MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG" set "MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG=%%b"
     )
 )
 
@@ -97,6 +106,32 @@ if not exist "!DATA_PATH!\speaker_profiles" (
 
 echo.
 echo [OK] All checks passed!
+echo.
+echo ================================================================================
+echo                         FEATURE STATUS
+echo ================================================================================
+echo.
+
+REM Display Speaker Recognition status
+if /i "!ENABLE_SPEAKER_RECOGNITION!"=="true" (
+    if exist "services\transcription_orchestrator\venv\Scripts\python.exe" (
+        echo   [ON]  Speaker Recognition    - Enabled ^(threshold: !RECOGNITION_THRESHOLD!^)
+    ) else (
+        echo   [OFF] Speaker Recognition    - Enabled in .env but venv not found!
+        echo         Run: services\transcription_orchestrator\setup.bat
+    )
+) else (
+    echo   [OFF] Speaker Recognition    - Disabled in .env
+)
+
+REM Display OpenWebUI RAG status
+if /i "!ENABLE_OPENWEBUI_RAG!"=="true" (
+    echo   [ON]  OpenWebUI RAG Indexing - Enabled
+    echo         RAG Speaker Threshold   - Max !MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG! unrecognized speakers
+) else (
+    echo   [OFF] OpenWebUI RAG Indexing - Disabled in .env
+)
+
 echo.
 echo ================================================================================
 echo Starting automatic monitoring...

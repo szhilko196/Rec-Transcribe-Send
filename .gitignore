@@ -112,3 +112,8 @@ data/speaker_profiles/yuliya_rubleva
 data/speaker_profiles/yurii_polupanov
 data/speaker_profiles/zhilko_sergei
 data/speaker_profiles/zolotova_elena_vitalevna
+services/OpenWebUi/.env
+test_openrouter.py
+test_qdrant_search.py
+tmpclaude-*
+nul

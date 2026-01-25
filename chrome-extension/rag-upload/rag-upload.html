@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload to RAG - MyRecV</title>
+  <link rel="stylesheet" href="rag-upload.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Upload to RAG</h1>
+      <p>Manually upload a meeting to OpenWebUI Knowledge Base</p>
+    </header>
+
+    <main class="content">
+      <!-- Configuration Section -->
+      <section class="section" id="configSection">
+        <h2>Configuration</h2>
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Uploader Script Path</strong>
+            <p>Path to openwebui_uploader.py script (relative to project root or absolute)</p>
+          </div>
+          <div class="setting-control">
+            <input type="text" id="uploaderPath" placeholder="services/OpenWebUi/scripts/openwebui_uploader.py"
+                   value="services/OpenWebUi/scripts/openwebui_uploader.py" />
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Python Path</strong>
+            <p>Path to Python executable (leave as 'python' for system Python)</p>
+          </div>
+          <div class="setting-control">
+            <input type="text" id="pythonPath" placeholder="python" value="python" />
+          </div>
+        </div>
+      </section>
+
+      <!-- Select folder Section -->
+      <section class="section">
+        <h2>Select Results Folder</h2>
+        <div class="setting-group">
+          <div class="setting-description">
+            <strong>Meeting results folder</strong>
+            <p>Select folder containing transcript_full.json, summary.md, and protocol.md</p>
+          </div>
+          <div class="setting-control">
+            <button class="btn btn-primary" id="selectFolderBtn">
+              Select folder
+            </button>
+            <div class="selected-path" id="selectedFolderPath">
+              No folder selected
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Files info -->
+      <section class="section" id="filesSection" style="display: none;">
+        <h2>Detected Files</h2>
+        <div class="files-info" id="filesInfo"></div>
+
+        <!-- RAG marker info -->
+        <div class="rag-marker-info" id="ragMarkerInfo" style="display: none;">
+          <div class="warning-box">
+            <strong>need_to_be_RAG.md found</strong>
+            <p>This meeting was previously skipped for RAG indexing.</p>
+            <div id="speakersInfo"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Upload Section -->
+      <section class="section" id="uploadSection" style="display: none;">
+        <h2>Upload to RAG</h2>
+        <div class="upload-note">
+          <p>Due to browser security restrictions, the upload must be run from the command line.</p>
+          <p>Click the button below to generate and copy the upload command.</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-success btn-large" id="generateCmdBtn">
+            Generate Upload Command
+          </button>
+        </div>
+      </section>
+
+      <!-- Command Section -->
+      <section class="section" id="commandSection" style="display: none;">
+        <h2>Upload Command</h2>
+        <div class="command-box">
+          <code id="uploadCommand"></code>
+          <button class="btn btn-primary btn-copy" id="copyCommandBtn">Copy</button>
+        </div>
+        <div class="upload-instructions">
+          <p><strong>Instructions:</strong></p>
+          <ol>
+            <li>Copy the command above</li>
+            <li>Open a terminal in your project folder</li>
+            <li>Paste and run the command</li>
+            <li>Wait for upload to complete</li>
+          </ol>
+        </div>
+        <button class="btn btn-secondary" id="newUploadBtn">
+          Upload another meeting
+        </button>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>
+        <a href="../options/options.html">Settings</a> |
+        <a href="../speaker-rename/speaker-rename.html">Rename speakers</a>
+      </p>
+    </footer>
+  </div>
+
+  <script src="rag-upload.js" type="module"></script>
+</body>
+</html>

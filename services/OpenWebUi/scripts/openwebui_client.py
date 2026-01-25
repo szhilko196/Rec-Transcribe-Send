@@ -157,7 +157,7 @@ class OpenWebUIClient:
             requests.HTTPError: If creation fails
         """
         response = requests.post(
-            f"{self.base_url}/api/v1/knowledge/",
+            f"{self.base_url}/api/v1/knowledge/create",
             headers=self.headers,
             json={"name": name, "description": description}
         )
@@ -170,6 +170,28 @@ class OpenWebUIClient:
             raise Exception(f"No knowledge base ID in response: {data}")
 
         return kb_id
+
+    def get_knowledge_base(self, knowledge_id: str) -> Optional[Dict]:
+        """
+        Get Knowledge Base by ID
+
+        Args:
+            knowledge_id: Knowledge Base ID
+
+        Returns:
+            dict: Knowledge Base metadata including files, None if not found
+        """
+        try:
+            response = requests.get(
+                f"{self.base_url}/api/v1/knowledge/{knowledge_id}",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
 
     def get_knowledge_base_by_name(self, name: str) -> Optional[Dict]:
         """
@@ -189,9 +211,9 @@ class OpenWebUIClient:
 
         knowledge_bases = response.json()
 
-        # Response might be a list or a dict with 'data' key
+        # Response might be a list or a dict with 'items' or 'data' key
         if isinstance(knowledge_bases, dict):
-            knowledge_bases = knowledge_bases.get('data', [])
+            knowledge_bases = knowledge_bases.get('items', knowledge_bases.get('data', []))
 
         for kb in knowledge_bases:
             if kb.get('name') == name:
@@ -218,7 +240,62 @@ class OpenWebUIClient:
             headers=self.headers,
             json={"file_id": file_id}
         )
+        if response.status_code >= 400:
+            error_detail = response.text[:500] if response.text else "No error details"
+            raise Exception(f"{response.status_code} Error: {error_detail}")
         response.raise_for_status()
+
+    def delete_knowledge_base(self, knowledge_id: str) -> bool:
+        """
+        Delete a Knowledge Base
+
+        Args:
+            knowledge_id: Knowledge Base ID to delete
+
+        Returns:
+            bool: True if deleted successfully
+
+        Raises:
+            requests.HTTPError: If deletion fails
+        """
+        response = requests.delete(
+            f"{self.base_url}/api/v1/knowledge/{knowledge_id}/delete",
+            headers=self.headers
+        )
+        response.raise_for_status()
+        return True
+
+    def list_files(self) -> List[Dict]:
+        """
+        List all uploaded files
+
+        Returns:
+            list: List of file metadata dicts
+        """
+        response = requests.get(
+            f"{self.base_url}/api/v1/files/",
+            headers=self.headers
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_files_in_knowledge_base(self, knowledge_id: str) -> List[Dict]:
+        """
+        Get files associated with a Knowledge Base
+
+        Args:
+            knowledge_id: Knowledge Base ID
+
+        Returns:
+            list: List of files in the KB (by checking collection_name in file meta)
+        """
+        all_files = self.list_files()
+        kb_files = []
+        for f in all_files:
+            collection = f.get('meta', {}).get('collection_name', '')
+            if collection == knowledge_id:
+                kb_files.append(f)
+        return kb_files
 
     def search(
         self,
@@ -265,9 +342,9 @@ class OpenWebUIClient:
 
         knowledge_bases = response.json()
 
-        # Response might be a list or a dict with 'data' key
+        # Response might be a list or a dict with 'items' or 'data' key
         if isinstance(knowledge_bases, dict):
-            knowledge_bases = knowledge_bases.get('data', [])
+            knowledge_bases = knowledge_bases.get('items', knowledge_bases.get('data', []))
 
         return knowledge_bases
 

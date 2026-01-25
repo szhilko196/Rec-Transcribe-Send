@@ -280,10 +280,19 @@ body {
 }
 
 .btn-speaker-rename,
-.btn-sample-splitter {
+.btn-sample-splitter,
+.btn-rag-upload {
   margin-top: 12px;
   font-size: 14px;
   padding: 12px 16px;
+}
+
+.btn-rag-upload {
+  background: #9C27B0;
+}
+
+.btn-rag-upload:hover {
+  background: #7B1FA2;
 }
 
 .btn-icon {

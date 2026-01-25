@@ -26,6 +26,7 @@ const elements = {
   stopBtn: document.getElementById('stopBtn'),
   speakerRenameBtn: document.getElementById('speakerRenameBtn'),
   sampleSplitterBtn: document.getElementById('sampleSplitterBtn'),
+  ragUploadBtn: document.getElementById('ragUploadBtn'),
 
   timer: document.getElementById('timer'),
   recordingIndicator: document.getElementById('recordingIndicator'),
@@ -160,6 +161,15 @@ function setupEventListeners() {
     });
   });
   console.log('[MyRecV] Sample splitter button listener attached');
+
+  // RAG upload button
+  elements.ragUploadBtn.addEventListener('click', () => {
+    console.log('[MyRecV] RAG upload button clicked');
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('rag-upload/rag-upload.html')
+    });
+  });
+  console.log('[MyRecV] RAG upload button listener attached');
 
   // Clear history
   elements.clearHistoryBtn.addEventListener('click', handleClearHistory);

@@ -22,6 +22,13 @@ from pathlib import Path
 from datetime import datetime
 import json
 
+# Load .env from project root
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+ENV_FILE = PROJECT_ROOT / ".env"
+if ENV_FILE.exists():
+    from dotenv import load_dotenv
+    load_dotenv(ENV_FILE)
+
 # Add parent directory to path for imports
 SCRIPT_DIR = Path(__file__).parent
 sys.path.append(str(SCRIPT_DIR))
@@ -35,6 +42,178 @@ OPENWEBUI_URL = os.getenv("OPENWEBUI_URL", "http://localhost:3000")
 OPENWEBUI_API_KEY = os.getenv("OPENWEBUI_API_KEY")
 ENABLE_CONTEXTUAL_RETRIEVAL = os.getenv("ENABLE_CONTEXTUAL_RETRIEVAL", "true").lower() == "true"
 SHARED_KB_NAME = "Meetings"
+
+# Chunking configuration
+TRANSCRIPT_SIZE_THRESHOLD_KB = 50  # Chunk if file larger than this
+SEGMENTS_PER_CHUNK = 100  # Number of transcript segments per chunk
+LINES_PER_CHUNK = 150  # Number of lines per chunk for text files
+
+
+def chunk_text_file(text_file: Path, output_dir: Path, meeting_id: str = None) -> list:
+    """
+    Split large text file into smaller chunks for efficient embedding.
+
+    Args:
+        text_file: Path to text file (e.g., transcript_enriched.txt)
+        output_dir: Directory to save chunk files
+        meeting_id: Unique identifier for the meeting (to avoid duplicate content)
+
+    Returns:
+        List of paths to chunk files
+    """
+    # Check file size
+    file_size_kb = text_file.stat().st_size / 1024
+
+    if file_size_kb < TRANSCRIPT_SIZE_THRESHOLD_KB:
+        # File is small enough, no chunking needed
+        return [text_file]
+
+    # Read text file
+    with open(text_file, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    if len(lines) <= LINES_PER_CHUNK:
+        return [text_file]
+
+    # Extract header (everything before first timestamp line)
+    header_lines = []
+    content_start = 0
+    for i, line in enumerate(lines):
+        if line.strip().startswith('[') and ':' in line[:10]:
+            content_start = i
+            break
+        header_lines.append(line)
+
+    header = ''.join(header_lines)
+    content_lines = lines[content_start:]
+
+    # Create chunks directory with unique name using timestamp
+    import time
+    chunk_timestamp = int(time.time())
+    chunks_dir = output_dir / f"transcript_chunks_{chunk_timestamp}"
+    chunks_dir.mkdir(exist_ok=True)
+
+    # Use meeting ID or folder name for unique identification
+    if not meeting_id:
+        meeting_id = output_dir.name
+
+    chunk_files = []
+    total_chunks = (len(content_lines) + LINES_PER_CHUNK - 1) // LINES_PER_CHUNK
+
+    for i in range(0, len(content_lines), LINES_PER_CHUNK):
+        chunk_num = i // LINES_PER_CHUNK + 1
+        chunk_lines = content_lines[i:i + LINES_PER_CHUNK]
+
+        # Build chunk with header and unique identifier
+        chunk_text = f"<!-- Meeting ID: {meeting_id} | Chunk: {chunk_num}/{total_chunks} | TS: {chunk_timestamp} -->\n\n"
+        chunk_text += header
+        if "Part " not in header:
+            chunk_text += f"\nTranscript Part {chunk_num}/{total_chunks}\n\n"
+        chunk_text += ''.join(chunk_lines)
+
+        # Save chunk with unique filename
+        chunk_file = chunks_dir / f"{meeting_id[:50]}_part_{chunk_num:02d}.txt"
+        with open(chunk_file, 'w', encoding='utf-8') as f:
+            f.write(chunk_text)
+
+        chunk_files.append(chunk_file)
+
+    return chunk_files
+
+
+def chunk_transcript(transcript_file: Path, output_dir: Path, meeting_id: str = None) -> list:
+    """
+    Split large transcript into smaller chunks for efficient embedding.
+    Handles both JSON (transcript_full.json) and text (transcript_enriched.txt) files.
+
+    Args:
+        transcript_file: Path to transcript file
+        output_dir: Directory to save chunk files
+        meeting_id: Unique identifier for the meeting (to avoid duplicate content)
+
+    Returns:
+        List of paths to chunk files
+    """
+    # Check file size
+    file_size_kb = transcript_file.stat().st_size / 1024
+
+    if file_size_kb < TRANSCRIPT_SIZE_THRESHOLD_KB:
+        # File is small enough, no chunking needed
+        return [transcript_file]
+
+    # Check if it's a text file (enriched) or JSON file (original)
+    if transcript_file.suffix.lower() == '.txt':
+        return chunk_text_file(transcript_file, output_dir, meeting_id)
+
+    # Handle JSON file
+    import time
+    chunk_timestamp = int(time.time())
+
+    with open(transcript_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    metadata = data.get('metadata', {})
+    segments = data.get('transcript', [])
+
+    if not segments:
+        return [transcript_file]
+
+    # Create chunks directory with unique timestamp
+    chunks_dir = output_dir / f"transcript_chunks_{chunk_timestamp}"
+    chunks_dir.mkdir(exist_ok=True)
+
+    # Use meeting ID or folder name for unique identification
+    if not meeting_id:
+        meeting_id = output_dir.name
+
+    # Meeting info header
+    meeting_name = metadata.get('original_filename', 'Unknown Meeting')
+    meeting_date = metadata.get('processed_at', '')[:10] if metadata.get('processed_at') else ''
+    num_speakers = metadata.get('num_speakers', 'unknown')
+    duration = metadata.get('duration_seconds', 0)
+    duration_str = f"{int(duration // 60)}:{int(duration % 60):02d}" if duration else 'unknown'
+
+    header = f"""Meeting: {meeting_name}
+Date: {meeting_date}
+Duration: {duration_str}
+Speakers: {num_speakers}
+
+---
+
+"""
+
+    chunk_files = []
+    total_chunks = (len(segments) + SEGMENTS_PER_CHUNK - 1) // SEGMENTS_PER_CHUNK
+
+    for i in range(0, len(segments), SEGMENTS_PER_CHUNK):
+        chunk_num = i // SEGMENTS_PER_CHUNK + 1
+        chunk_segments = segments[i:i + SEGMENTS_PER_CHUNK]
+
+        # Format segments as readable text with unique identifier
+        chunk_text = f"<!-- Meeting ID: {meeting_id} | Chunk: {chunk_num}/{total_chunks} | TS: {chunk_timestamp} -->\n\n"
+        chunk_text += header
+        chunk_text += f"Transcript Part {chunk_num}/{total_chunks}\n\n"
+
+        for seg in chunk_segments:
+            speaker = seg.get('speaker', 'UNKNOWN')
+            start = seg.get('start', 0)
+            text = seg.get('text', '')
+
+            # Format timestamp
+            minutes = int(start // 60)
+            seconds = int(start % 60)
+            timestamp = f"[{minutes:02d}:{seconds:02d}]"
+
+            chunk_text += f"{timestamp} {speaker}: {text}\n"
+
+        # Save chunk with unique filename
+        chunk_file = chunks_dir / f"{meeting_id[:50]}_part_{chunk_num:02d}.txt"
+        with open(chunk_file, 'w', encoding='utf-8') as f:
+            f.write(chunk_text)
+
+        chunk_files.append(chunk_file)
+
+    return chunk_files
 
 
 def upload_meeting_to_openwebui(result_folder: Path) -> bool:
@@ -95,23 +274,37 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
 
     if ENABLE_CONTEXTUAL_RETRIEVAL:
         print("\n[Step 3/6] Applying Contextual Retrieval enrichment...")
-        print("[INFO] This may take 2-5 minutes (calling Claude API for each chunk)")
 
-        try:
-            enricher = ContextualEnricher()
-            enriched_folder = enricher.enrich_meeting_folder(result_folder)
-            print(f"[✓] Contextual enrichment completed")
-            print(f"    Enriched files saved to: {enriched_folder.name}/")
+        # Check if enriched files already exist
+        enriched_folder = result_folder / "enriched"
+        enriched_transcript = enriched_folder / "transcript_enriched.txt"
+        enriched_summary = enriched_folder / "summary_enriched.md"
+        enriched_protocol = enriched_folder / "protocol_enriched.md"
 
-            # Use enriched files
-            transcript_file = enriched_folder / "transcript_full.json"
-            summary_file = enriched_folder / "summary.md"
-            protocol_file = enriched_folder / "protocol.md"
+        if all([enriched_transcript.exists(), enriched_summary.exists(), enriched_protocol.exists()]):
+            print("[INFO] Found existing enriched files, skipping enrichment")
+            transcript_file = enriched_transcript
+            summary_file = enriched_summary
+            protocol_file = enriched_protocol
+            print(f"[✓] Using existing enriched files from: {enriched_folder.name}/")
+        else:
+            print("[INFO] This may take 2-5 minutes (calling Claude API for each chunk)")
 
-        except Exception as e:
-            print(f"[WARNING] Contextual enrichment failed: {e}")
-            print("[INFO] Falling back to original files (without context)")
-            # Continue with original files
+            try:
+                enricher = ContextualEnricher()
+                enriched_folder = enricher.enrich_meeting_folder(result_folder)
+                print(f"[✓] Contextual enrichment completed")
+                print(f"    Enriched files saved to: {enriched_folder.name}/")
+
+                # Use enriched files (with _enriched suffix)
+                transcript_file = enriched_folder / "transcript_enriched.txt"
+                summary_file = enriched_folder / "summary_enriched.md"
+                protocol_file = enriched_folder / "protocol_enriched.md"
+
+            except Exception as e:
+                print(f"[WARNING] Contextual enrichment failed: {e}")
+                print("[INFO] Falling back to original files (without context)")
+                # Continue with original files
     else:
         print("\n[Step 3/6] Contextual enrichment disabled (using original files)")
 
@@ -121,10 +314,22 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
 
     kb = client.get_knowledge_base_by_name(SHARED_KB_NAME)
 
-    if kb:
+    if kb and kb.get('write_access', False):
         kb_id = kb['id']
         print(f"[✓] Found existing Knowledge Base: '{SHARED_KB_NAME}'")
         print(f"    ID: {kb_id}")
+    elif kb and not kb.get('write_access', False):
+        print(f"[INFO] Found KB '{SHARED_KB_NAME}' but no write access, creating new one...")
+        try:
+            kb_id = client.create_knowledge_base(
+                name=SHARED_KB_NAME,
+                description="Semantic search across all meeting transcriptions with contextual enrichment"
+            )
+            print(f"[✓] Created new Knowledge Base: '{SHARED_KB_NAME}'")
+            print(f"    ID: {kb_id}")
+        except Exception as e:
+            print(f"[ERROR] Failed to create Knowledge Base: {e}")
+            return False
     else:
         print(f"[INFO] Creating new Knowledge Base: '{SHARED_KB_NAME}'")
         try:
@@ -142,40 +347,60 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
     print(f"\n[Step 5/6] Uploading files to OpenWebUI...")
 
     uploaded_files = []
-    files_to_upload = [
-        (transcript_file, "transcript"),
-        (summary_file, "summary"),
-        (protocol_file, "protocol")
-    ]
 
-    for file_path, doc_type in files_to_upload:
-        print(f"\n  [{doc_type.upper()}] Processing: {file_path.name}")
-
+    # Helper function to upload a single file
+    def upload_single_file(file_path: Path, doc_type: str, timeout: int = 180) -> bool:
         try:
-            # Upload file
-            print(f"    - Uploading...")
+            print(f"    - Uploading {file_path.name}...")
             file_id = client.upload_file(file_path)
-            print(f"    ✓ Uploaded (ID: {file_id})")
+            print(f"      ✓ Uploaded (ID: {file_id})")
 
-            # Wait for async processing (embedding generation)
             print(f"    - Waiting for embedding generation...")
-            client.wait_for_processing(file_id, timeout=180)
-            print(f"    ✓ Processing completed")
+            client.wait_for_processing(file_id, timeout=timeout)
+            print(f"      ✓ Processing completed")
 
-            # Add to Knowledge Base
             print(f"    - Adding to Knowledge Base...")
             client.add_file_to_knowledge_base(kb_id, file_id)
-            print(f"    ✓ Added to Knowledge Base")
+            print(f"      ✓ Added to Knowledge Base")
 
             uploaded_files.append({
                 "type": doc_type,
                 "file_id": file_id,
                 "filename": file_path.name
             })
-
+            return True
         except Exception as e:
-            print(f"    ✗ Failed to upload {doc_type}: {e}")
-            # Continue with other files even if one fails
+            print(f"      ✗ Failed: {e}")
+            return False
+
+    # Upload transcript (with chunking for large files)
+    print(f"\n  [TRANSCRIPT] Processing: {transcript_file.name}")
+    transcript_size_kb = transcript_file.stat().st_size / 1024
+    print(f"    File size: {transcript_size_kb:.1f} KB")
+
+    if transcript_size_kb > TRANSCRIPT_SIZE_THRESHOLD_KB:
+        print(f"    Large file detected, splitting into chunks...")
+        meeting_id = result_folder.name
+        chunk_files = chunk_transcript(transcript_file, result_folder, meeting_id)
+        print(f"    Created {len(chunk_files)} chunk(s)")
+
+        chunk_success = 0
+        for i, chunk_file in enumerate(chunk_files, 1):
+            print(f"\n    [Chunk {i}/{len(chunk_files)}]")
+            if upload_single_file(chunk_file, f"transcript_part_{i}", timeout=120):
+                chunk_success += 1
+
+        print(f"\n    Transcript chunks uploaded: {chunk_success}/{len(chunk_files)}")
+    else:
+        upload_single_file(transcript_file, "transcript")
+
+    # Upload summary
+    print(f"\n  [SUMMARY] Processing: {summary_file.name}")
+    upload_single_file(summary_file, "summary")
+
+    # Upload protocol
+    print(f"\n  [PROTOCOL] Processing: {protocol_file.name}")
+    upload_single_file(protocol_file, "protocol")
 
     if not uploaded_files:
         print("\n[ERROR] No files uploaded successfully")
@@ -231,6 +456,11 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
 
 def main():
     """Main entry point"""
+    # Fix Windows console encoding for Unicode characters
+    if sys.platform == 'win32':
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
     if len(sys.argv) < 2:
         print("Usage: python openwebui_uploader.py <result_folder>")

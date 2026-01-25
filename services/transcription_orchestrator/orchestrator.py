@@ -29,6 +29,14 @@ from typing import Dict, Optional
 import anthropic
 from dotenv import load_dotenv
 
+# Import OpenAI for OpenRouter support
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    print("[WARNING] OpenAI library not available. Install with: pip install openai")
+
 # Import speaker recognition module
 try:
     from recognize import SpeakerRecognizer
@@ -47,7 +55,19 @@ load_dotenv(ENV_PATH, override=True)
 # Configuration
 FFMPEG_SERVICE_URL = os.getenv("FFMPEG_SERVICE_URL", "http://localhost:8002")
 TRANSCRIPTION_SERVICE_URL = os.getenv("TRANSCRIPTION_SERVICE_URL", "http://localhost:8003")
+
+# LLM Provider Configuration
+# LLM_PROVIDER: "claude" (default) or "openai" (for OpenRouter/OpenAI-compatible APIs)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "claude").lower()
+
+# Claude API Configuration
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+
+# OpenAI-compatible API Configuration (for OpenRouter, etc.)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "anthropic/claude-3.5-haiku")
 
 # Diarization configuration
 CHUNK_DURATION_SEC = int(os.getenv("CHUNK_DURATION_SEC", "1800"))  # Default: 30 minutes
@@ -60,15 +80,18 @@ DATA_DIR = Path(os.getenv('DATA_PATH', 'data'))
 INPUT_DIR = DATA_DIR / "input"
 RESULTS_DIR = DATA_DIR / "results"
 
-# Path to configuration files
-SCRIPT_DIR = Path(__file__).parent.parent  # Project root directory
-CONFIG_DIR = SCRIPT_DIR / "config"
+# Path to configuration files (use ROOT_DIR which is already correctly calculated)
+CONFIG_DIR = ROOT_DIR / "config"
 PROMPTS_CONFIG_PATH = CONFIG_DIR / "prompts.json"
 
 # OpenWebUI RAG Configuration
 ENABLE_OPENWEBUI_RAG = os.getenv("ENABLE_OPENWEBUI_RAG", "false").lower() == "true"
 OPENWEBUI_URL = os.getenv("OPENWEBUI_URL", "http://localhost:3000")
-OPENWEBUI_UPLOADER_SCRIPT = SCRIPT_DIR / "OpenWebUi" / "scripts" / "openwebui_uploader.py"
+OPENWEBUI_UPLOADER_SCRIPT = ROOT_DIR / "services" / "OpenWebUi" / "scripts" / "openwebui_uploader.py"
+
+# Conditional RAG indexing based on speaker recognition
+# If unrecognized speakers count exceeds this threshold, RAG upload is skipped
+MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG = int(os.getenv("MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG", "2"))
 
 
 def run_curl(url: str, method: str = "POST", data_file: str = None,
@@ -1374,7 +1397,7 @@ def send_email_with_results(
 
 def generate_summary_and_protocol(transcript_data: Dict, result_folder: Path) -> Dict:
     """
-    Generate summary and protocol via Claude API
+    Generate summary and protocol via LLM API (Claude or OpenAI-compatible)
 
     Args:
         transcript_data: Transcription data
@@ -1383,11 +1406,36 @@ def generate_summary_and_protocol(transcript_data: Dict, result_folder: Path) ->
     Returns:
         Dictionary with summary and protocol
     """
-    print(f"\n[STEP 3] Generating summary and protocol (Claude API)...")
+    # Determine which provider to use
+    provider = LLM_PROVIDER
 
-    if not CLAUDE_API_KEY:
-        print("[WARNING] CLAUDE_API_KEY not set. Skipping generation.")
-        return {}
+    # Check API key availability
+    if provider == "openai":
+        if not OPENAI_API_KEY:
+            print("[WARNING] LLM_PROVIDER=openai but OPENAI_API_KEY not set.")
+            # Fallback to Claude if available
+            if CLAUDE_API_KEY:
+                print("[INFO] Falling back to Claude API.")
+                provider = "claude"
+            else:
+                print("[WARNING] No API keys available. Skipping generation.")
+                return {}
+        elif not OPENAI_AVAILABLE:
+            print("[WARNING] OpenAI library not installed. Falling back to Claude.")
+            provider = "claude"
+
+    if provider == "claude" and not CLAUDE_API_KEY:
+        if OPENAI_API_KEY and OPENAI_AVAILABLE:
+            print("[INFO] CLAUDE_API_KEY not set, using OpenAI-compatible API.")
+            provider = "openai"
+        else:
+            print("[WARNING] No API keys available. Skipping generation.")
+            return {}
+
+    print(f"\n[STEP 3] Generating summary and protocol ({provider.upper()} API)...")
+    if provider == "openai":
+        print(f"  Model: {OPENAI_MODEL}")
+        print(f"  Base URL: {OPENAI_BASE_URL}")
 
     # Load prompts from configuration
     prompts = load_prompts()
@@ -1454,46 +1502,101 @@ Format: structured text with headings and lists."""
 
     print(f"[OK] Created readable transcript: {readable_path.name}")
 
-    # Initialize Claude API
-    client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+    # System prompt for both APIs
+    system_prompt = "Ты - помощник для анализа встреч. Отвечай ТОЛЬКО на русском языке. You must answer in Russian language only."
 
-    # Request for summary
-    print("  Generating brief summary...")
+    # Prepare prompts
     summary_prompt = prompts['summary_prompt_template'].format(transcript=formatted_transcript)
-
-    # Debug: show first 200 chars of prompt
-    print(f"[DEBUG] Summary prompt (first 200 chars): {summary_prompt[:200]}")
-
-    summary_response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=2000,
-        timeout=300.0,  # 5 minutes timeout for summary
-        system="Ты - помощник для анализа встреч. Отвечай ТОЛЬКО на русском языке. You must answer in Russian language only.",
-        messages=[
-            {"role": "user", "content": summary_prompt}
-        ]
-    )
-
-    summary = summary_response.content[0].text
-
-    # Request for protocol
-    print("  Generating protocol with commitments...")
     protocol_prompt = prompts['protocol_prompt_template'].format(transcript=formatted_transcript)
 
-    # Debug: show first 200 chars of prompt
-    print(f"[DEBUG] Protocol prompt (first 200 chars): {protocol_prompt[:200]}")
+    # Debug: show first 200 chars of prompts
+    print(f"[DEBUG] Summary prompt (first 200 chars): {summary_prompt[:200]}")
 
-    protocol_response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=4000,
-        timeout=600.0,  # 10 minutes timeout for protocol (longer than summary)
-        system="Ты - помощник для анализа встреч. Отвечай ТОЛЬКО на русском языке. You must answer in Russian language only.",
-        messages=[
-            {"role": "user", "content": protocol_prompt}
-        ]
-    )
+    if provider == "claude":
+        # Initialize Claude API
+        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 
-    protocol = protocol_response.content[0].text
+        # Request for summary
+        print("  Generating brief summary...")
+        summary_response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=2000,
+            timeout=300.0,  # 5 minutes timeout for summary
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": summary_prompt}
+            ]
+        )
+        summary = summary_response.content[0].text
+
+        # Request for protocol
+        print("  Generating protocol with commitments...")
+        print(f"[DEBUG] Protocol prompt (first 200 chars): {protocol_prompt[:200]}")
+
+        protocol_response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=4000,
+            timeout=600.0,  # 10 minutes timeout for protocol
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": protocol_prompt}
+            ]
+        )
+        protocol = protocol_response.content[0].text
+
+    else:
+        # Initialize OpenAI-compatible client (OpenRouter, etc.)
+        import httpx
+        client = OpenAI(
+            api_key=OPENAI_API_KEY,
+            base_url=OPENAI_BASE_URL,
+            timeout=httpx.Timeout(600.0, connect=30.0)  # 10 min read, 30s connect
+        )
+
+        # Request for summary with retry logic
+        print("  Generating brief summary...")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                summary_response = client.chat.completions.create(
+                    model=OPENAI_MODEL,
+                    max_tokens=2000,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": summary_prompt}
+                    ]
+                )
+                summary = summary_response.choices[0].message.content
+                break
+            except Exception as e:
+                print(f"  [WARNING] Attempt {attempt + 1}/{max_retries} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                import time
+                time.sleep(5)  # Wait 5 seconds before retry
+
+        # Request for protocol with retry logic
+        print("  Generating protocol with commitments...")
+        print(f"[DEBUG] Protocol prompt (first 200 chars): {protocol_prompt[:200]}")
+
+        for attempt in range(max_retries):
+            try:
+                protocol_response = client.chat.completions.create(
+                    model=OPENAI_MODEL,
+                    max_tokens=4000,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": protocol_prompt}
+                    ]
+                )
+                protocol = protocol_response.choices[0].message.content
+                break
+            except Exception as e:
+                print(f"  [WARNING] Attempt {attempt + 1}/{max_retries} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                import time
+                time.sleep(5)  # Wait 5 seconds before retry
 
     # Save summary
     summary_path = result_folder / "summary.md"
@@ -1581,6 +1684,65 @@ def upload_to_openwebui(result_folder: Path) -> bool:
         return False
 
 
+def create_rag_marker_file(result_folder: Path, recognized_speakers: list, unrecognized_speakers: list) -> Path:
+    """
+    Create marker file when RAG upload is skipped due to unrecognized speakers.
+
+    Args:
+        result_folder: Path to result folder
+        recognized_speakers: List of recognized speaker names
+        unrecognized_speakers: List of unrecognized speaker IDs (e.g., SPEAKER_02)
+
+    Returns:
+        Path to created marker file
+    """
+    marker_path = result_folder / "need_to_be_RAG.md"
+
+    # Format speaker lists
+    recognized_list = '\n'.join(f'- {name}' for name in recognized_speakers) if recognized_speakers else '- None'
+    unrecognized_list = '\n'.join(f'- {speaker_id}' for speaker_id in unrecognized_speakers) if unrecognized_speakers else '- None'
+
+    content = f"""# RAG Indexing Required
+
+This meeting was NOT automatically indexed in the RAG Knowledge Base because too many speakers were unrecognized.
+
+## Speaker Recognition Results
+
+### Recognized Speakers ({len(recognized_speakers)})
+{recognized_list}
+
+### Unrecognized Speakers ({len(unrecognized_speakers)})
+{unrecognized_list}
+
+## Required Actions
+
+1. **Identify unknown speakers** using the Chrome extension "Rename speakers" tool
+2. **After renaming**, use the Chrome extension "Upload to RAG" button to manually upload this meeting
+
+## How to Upload
+
+### Option 1: Chrome Extension (Recommended)
+1. Open the MyRecV Chrome extension
+2. Click the "Upload to RAG" button
+3. Select this folder: `{result_folder.name}`
+4. Follow the instructions to run the upload command
+
+### Option 2: Command Line
+```bash
+python services/OpenWebUi/scripts/openwebui_uploader.py "{result_folder}"
+```
+
+---
+*Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}*
+*Threshold: {MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG} unrecognized speakers allowed*
+"""
+
+    with open(marker_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+    return marker_path
+
+
 def main(video_path_str: str) -> Dict:
     """
     Main orchestrator function
@@ -1664,13 +1826,43 @@ def main(video_path_str: str) -> Dict:
 
     # Step 4.5: Upload to OpenWebUI (if enabled)
     openwebui_rag_indexed = False
+    rag_skipped_reason = None
+
     if ENABLE_OPENWEBUI_RAG:
-        success = upload_to_openwebui(result_folder)
-        openwebui_rag_indexed = success
-        if success:
-            print("\n[INFO] Meeting indexed in OpenWebUI Knowledge Base")
+        # Check unrecognized speakers count for conditional RAG upload
+        metadata = transcript_info.get('full_transcript', {}).get('metadata', {})
+        unrecognized_speakers = metadata.get('unrecognized_speakers', [])
+        recognized_speakers = metadata.get('recognized_speakers', [])
+        unrecognized_count = len(unrecognized_speakers)
+
+        if unrecognized_count > MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG:
+            # Skip RAG, create marker file
+            print("\n" + "=" * 60)
+            print("[WARNING] RAG UPLOAD SKIPPED - Too many unrecognized speakers")
+            print("=" * 60)
+            print(f"\n  Unrecognized speakers: {unrecognized_count}")
+            print(f"  Threshold: {MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG}")
+            print(f"\n  Unrecognized speaker IDs:")
+            for speaker_id in unrecognized_speakers:
+                print(f"    - {speaker_id}")
+
+            # Create marker file
+            marker_path = create_rag_marker_file(result_folder, recognized_speakers, unrecognized_speakers)
+            print(f"\n  Marker file created: {marker_path.name}")
+            print("\n  [ACTION REQUIRED]")
+            print("  1. Use Chrome extension 'Rename speakers' to identify speakers")
+            print("  2. Use Chrome extension 'Upload to RAG' to manually upload")
+            print("=" * 60 + "\n")
+
+            rag_skipped_reason = f"Too many unrecognized speakers ({unrecognized_count} > {MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG})"
         else:
-            print("\n[WARNING] OpenWebUI upload failed, but meeting was processed successfully")
+            # Proceed with RAG normally
+            success = upload_to_openwebui(result_folder)
+            openwebui_rag_indexed = success
+            if success:
+                print("\n[INFO] Meeting indexed in OpenWebUI Knowledge Base")
+            else:
+                print("\n[WARNING] OpenWebUI upload failed, but meeting was processed successfully")
     else:
         print("\n[INFO] OpenWebUI RAG indexing disabled (ENABLE_OPENWEBUI_RAG=false)")
 
@@ -1704,7 +1896,9 @@ def main(video_path_str: str) -> Dict:
             "summary": str(result_folder / "summary.md") if claude_info else None,
             "protocol": str(result_folder / "protocol.md") if claude_info else None
         },
-        "openwebui_rag_indexed": openwebui_rag_indexed
+        "openwebui_rag_indexed": openwebui_rag_indexed,
+        "openwebui_rag_skipped": rag_skipped_reason is not None,
+        "openwebui_rag_skip_reason": rag_skipped_reason
     }
 
     # Save metadata

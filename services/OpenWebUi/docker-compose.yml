@@ -1,10 +1,10 @@
 services:
-  # LiteLLM Proxy - Translates OpenAI API format to Claude/Anthropic API
+  # LiteLLM Proxy - Translates OpenAI API format to Claude/Anthropic/OpenRouter
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: openwebui-litellm
     env_file:
-      - ../../.env  # Load CLAUDE_API_KEY
+      - .env  # Local .env file with API keys
     ports:
       - "4000:4000"
     volumes:
@@ -39,7 +39,7 @@ services:
 
   # OpenWebUI Main Service
   openwebui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:cuda
     container_name: openwebui
     env_file:
       - ../../.env  # Load root .env file for CLAUDE_API_KEY
@@ -49,6 +49,13 @@ services:
       - ./openwebui_data:/app/backend/data
       - ./models_cache:/root/.cache/huggingface  # For BGE-M3 and reranker models
       - C:/YandexDisk/DIASOFT/VideoPars/data:/data:ro  # Read-only access to meetings
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     environment:
       # Vector Database Configuration
       - VECTOR_DB=qdrant
@@ -68,7 +75,7 @@ services:
       - RAG_RERANKING_MODEL_AUTO_UPDATE=true
       - RAG_TOP_K=8
       - RAG_TOP_K_RERANKER=3
-      - RAG_RELEVANCE_THRESHOLD=0.3
+      - RAG_RELEVANCE_THRESHOLD=0.1
 
       # Hybrid Search Configuration
       - ENABLE_RAG_HYBRID_SEARCH=true
@@ -87,7 +94,9 @@ services:
 
       # Performance Configuration
       - ENABLE_ASYNC_EMBEDDING=true
-      - RAG_EMBEDDING_BATCH_SIZE=1
+      - RAG_EMBEDDING_BATCH_SIZE=32
+      - DEVICE=cuda
+      - CUDA_VISIBLE_DEVICES=0
 
       # Query Generation
       - ENABLE_RETRIEVAL_QUERY_GENERATION=true

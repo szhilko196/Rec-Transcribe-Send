@@ -1,6 +1,6 @@
 # Rec-Transcribe-Send - Automated Meeting Transcription System
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.10-blue.svg)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0-red.svg)
@@ -32,6 +32,15 @@
 - **👁️ Automatic Monitoring** - watches input folder for new files
 - **📧 Email Integration** - automatic delivery of results to meeting participants
 - **☁️ NextCloud Support** - cloud storage for recordings
+
+### RAG Knowledge Base (v1.4.0)
+- **🔍 OpenWebUI RAG Search** - 🆕 semantic search across all meeting transcripts
+- **🧠 Hybrid Search** - combines BM25 keyword + semantic vector search
+- **📚 Qdrant Vector Database** - fast HNSW-indexed vector storage
+- **🎯 BGE-M3 Embeddings** - state-of-the-art multilingual embeddings (1024-dim)
+- **⚡ GPU Acceleration** - CUDA support for fast embedding generation
+- **🔗 LiteLLM Proxy** - unified API for Claude/OpenRouter models
+- **📤 Chrome Extension RAG Upload** - 🆕 manual upload button for meetings
 
 ## 📊 System Architecture
 
@@ -380,6 +389,7 @@ python test_installation.py  # Linux/Mac
 - ✅ Recording history
 - ✅ NextCloud integration
 - ✅ Hotkeys: `Ctrl+Shift+R` (start), `Ctrl+Shift+S` (stop)
+- ✅ **RAG Upload Button** - 🆕 manually upload meetings to OpenWebUI Knowledge Base
 
 ### Use Cases
 
@@ -557,6 +567,148 @@ ls data/speaker_profiles/speakers.json
 - **Implementation Guide**: `SPEAKER_RECOGNITION_IMPLEMENTATION.md` (comprehensive 30+ page guide)
 - **Setup Instructions**: `data/speaker_profiles/README.md`
 - **Configuration**: See `.env.example` for all variables
+
+## 🔍 OpenWebUI RAG - Semantic Search Across Meetings
+
+**NEW!** Search all your meeting transcripts, summaries, and protocols using natural language queries through OpenWebUI interface.
+
+### How It Works
+
+1. **📤 Automatic Indexing** - Processed meetings are automatically uploaded to OpenWebUI Knowledge Base
+2. **🧬 BGE-M3 Embeddings** - Documents are embedded using state-of-the-art multilingual model (1024-dim)
+3. **💾 Qdrant Vector DB** - Vectors stored in fast HNSW-indexed database
+4. **🔍 Hybrid Search** - Combines BM25 keyword search + semantic vector search
+5. **🎯 Reranking** - BGE-reranker-v2-m3 reranks top results for better accuracy
+6. **💬 Chat Interface** - Ask questions in natural language, get answers with citations
+
+### Quick Start
+
+**1. Start OpenWebUI services:**
+```bash
+cd services/OpenWebUi
+docker-compose up -d
+```
+
+**2. Configure API keys** (in `services/OpenWebUi/.env`):
+```env
+ANTHROPIC_API_KEY=sk-ant-...      # For Claude models
+OPENAI_API_KEY=sk-or-v1-...       # For OpenRouter (optional)
+```
+
+**3. Enable RAG indexing** (in root `.env`):
+```env
+ENABLE_OPENWEBUI_RAG=true
+OPENWEBUI_URL=http://localhost:3000
+OPENWEBUI_API_KEY=sk-...          # Generate in OpenWebUI Settings > Account > API Keys
+```
+
+**4. Access OpenWebUI:**
+- Open http://localhost:3000
+- Create account on first visit
+- Select a model (e.g., `claude-haiku-3.5`)
+- Use `#Meetings` to search the knowledge base
+
+### Searching Meetings
+
+**In OpenWebUI chat:**
+```
+#Meetings Что обсуждали по проекту КПП?
+```
+
+**Example queries:**
+- "Кто отвечает за расчеты до 15 марта?"
+- "Какие решения приняли по налоговому агентированию?"
+- "В какой встрече обсуждали депозитарные счета?"
+
+### Architecture
+
+```
+Meeting Processed → Orchestrator → OpenWebUI Uploader
+                                         ↓
+                              BGE-M3 Embeddings (GPU)
+                                         ↓
+                              Qdrant Vector Database
+                                         ↓
+User Query → OpenWebUI → Hybrid Search → Reranker → LLM Response
+```
+
+### Services (docker-compose)
+
+| Service | Port | Description |
+|---------|------|-------------|
+| OpenWebUI | 3000 | Web interface + RAG API |
+| Qdrant | 6333 | Vector database |
+| LiteLLM | 4000 | LLM proxy (Claude/OpenRouter) |
+
+### Configuration Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_OPENWEBUI_RAG` | `false` | Enable automatic RAG indexing |
+| `OPENWEBUI_URL` | `http://localhost:3000` | OpenWebUI service URL |
+| `OPENWEBUI_API_KEY` | - | API key (generate in UI) |
+| `RAG_RELEVANCE_THRESHOLD` | `0.1` | Minimum relevance score (0.0-1.0) |
+| `MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG` | `7` | Skip RAG if too many unknown speakers |
+
+### GPU Acceleration
+
+For faster embeddings (47s → 2-3s):
+
+```yaml
+# In docker-compose.yml, OpenWebUI uses CUDA image:
+image: ghcr.io/open-webui/open-webui:cuda
+environment:
+  - DEVICE=cuda
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
+### Chrome Extension RAG Upload
+
+The Chrome Extension includes a **"Upload to RAG"** button for manual uploads:
+
+1. Open MyRecV extension
+2. Go to "RAG Upload" tab
+3. Select a processed meeting folder
+4. Click "Upload to RAG"
+5. Meeting is indexed in OpenWebUI Knowledge Base
+
+This is useful when:
+- Automatic RAG indexing was skipped (too many unrecognized speakers)
+- You want to re-index a meeting after renaming speakers
+- Testing RAG functionality
+
+### Troubleshooting
+
+**"No sources found" in OpenWebUI:**
+- Check `RAG_RELEVANCE_THRESHOLD` (lower to 0.1)
+- Verify documents are indexed: check Qdrant collections
+- Use `#Meetings` prefix in your query
+
+**Slow embedding (47+ seconds):**
+- Enable GPU: use `cuda` image variant
+- Check: `docker exec openwebui python -c "import torch; print(torch.cuda.is_available())"`
+
+**LiteLLM model errors:**
+- Check API keys in `services/OpenWebUi/.env`
+- Verify LiteLLM is running: `docker logs openwebui-litellm`
+- Restart: `docker-compose restart litellm`
+
+**Documents not indexing:**
+- Check `ENABLE_OPENWEBUI_RAG=true` in root `.env`
+- Verify OpenWebUI API key is set
+- Check orchestrator logs for upload errors
+
+### Documentation
+
+- **Integration Guide**: `services/OpenWebUi/INTEGRATION.md`
+- **Deployment Status**: `services/OpenWebUi/DEPLOYMENT_STATUS.md`
+- **Docker Config**: `services/OpenWebUi/docker-compose.yml`
 
 ## 📁 Output Structure
 
@@ -828,6 +980,39 @@ MIT License - see LICENSE file for details
 
 ## 🆕 What's New
 
+### v1.4.0 - OpenWebUI RAG Integration (January 2026)
+
+**Major Feature**: Added semantic search across all meeting transcripts via OpenWebUI + Qdrant.
+
+**Key Features:**
+- ✅ **Semantic Search** - Search meetings using natural language queries
+- ✅ **Hybrid Search** - Combines BM25 keyword + vector semantic search
+- ✅ **Qdrant Vector DB** - Fast HNSW-indexed vector storage
+- ✅ **BGE-M3 Embeddings** - State-of-the-art multilingual model (1024-dim)
+- ✅ **BGE Reranker** - Improved result ranking accuracy
+- ✅ **LiteLLM Proxy** - Unified API for Claude and OpenRouter models
+- ✅ **GPU Acceleration** - CUDA support for fast embedding (47s → 2-3s)
+- ✅ **Chrome Extension RAG Upload** - Manual upload button for meetings
+- ✅ **Automatic Indexing** - Processed meetings auto-indexed to Knowledge Base
+
+**Usage:**
+```bash
+# Start services
+cd services/OpenWebUi
+docker-compose up -d
+
+# Enable in .env
+ENABLE_OPENWEBUI_RAG=true
+OPENWEBUI_API_KEY=sk-...
+
+# Search in OpenWebUI (http://localhost:3000)
+#Meetings Что обсуждали по проекту?
+```
+
+**Documentation:**
+- Integration Guide: `services/OpenWebUi/INTEGRATION.md`
+- Docker Config: `services/OpenWebUi/docker-compose.yml`
+
 ### v1.3.0 - Speaker Recognition (November 2025)
 
 **Major Feature**: Added speaker recognition to identify known speakers by voice and replace generic labels with real names.
@@ -906,7 +1091,7 @@ ENABLE_SPEAKER_RECOGNITION=true
 ---
 
 **Status**: Production Ready ✅
-**Version**: 1.3.0
-**Last Updated**: November 2025
+**Version**: 1.4.0
+**Last Updated**: January 2026
 
-**Latest Feature**: 🎭 Speaker Recognition - Automatically identify known speakers by voice and replace generic labels with real names!
+**Latest Feature**: 🔍 OpenWebUI RAG - Semantic search across all meeting transcripts with GPU-accelerated embeddings!

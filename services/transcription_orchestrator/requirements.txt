@@ -3,6 +3,7 @@
 
 # Existing dependencies (already used by orchestrator)
 anthropic>=0.18.0
+openai>=1.0.0  # OpenAI-compatible API (for OpenRouter, etc.)
 python-dotenv>=1.0.0
 watchdog>=3.0.0
 requests>=2.28.0  # HTTP requests (handles Cyrillic filenames properly)

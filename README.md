@@ -41,6 +41,7 @@
 - **⚡ GPU Acceleration** - CUDA support for fast embedding generation
 - **🔗 LiteLLM Proxy** - unified API for Claude/OpenRouter models
 - **📤 Chrome Extension RAG Upload** - 🆕 manual upload button for meetings
+- **🤖 Telegram Bot Interface** - 🆕 search meetings via Telegram with user whitelist
 
 ## 📊 System Architecture
 
@@ -704,11 +705,54 @@ This is useful when:
 - Verify OpenWebUI API key is set
 - Check orchestrator logs for upload errors
 
+### Telegram Bot Integration
+
+The **Telegram RAG Bot** provides a convenient mobile interface for searching meetings via Telegram messenger.
+
+**Features:**
+- 💬 Search meetings using natural language queries via Telegram
+- 👥 User whitelist with admin management
+- 📚 Multiple knowledge bases support
+- 🌐 Russian and English interface
+- 🔐 Secure access control with user authorization
+
+**Quick Start:**
+```bash
+cd services/telegram-rag-bot
+python -m venv venv
+venv\Scripts\activate  # Windows
+pip install -r requirements.txt
+cp config/.env.example .env
+# Edit .env with TELEGRAM_BOT_TOKEN and OPENWEBUI_API_KEY
+python -m src.main
+```
+
+**Commands:**
+- `/start` - Welcome message
+- `/help` - Show available commands
+- `/search <query>` - Search the knowledge base
+- `/kb` - List available knowledge bases
+- `<text message>` - Direct search query (no command needed)
+
+**Admin Commands:**
+- `/adduser <id> <name>` - Add user to whitelist
+- `/removeuser <id>` - Remove user from whitelist
+- `/listusers` - List all authorized users
+
+**Example Usage:**
+```
+You: Что обсуждали по проекту КПП?
+Bot: [Ответ с цитатами из встреч и ссылками на источники]
+```
+
+**Documentation:** `services/telegram-rag-bot/README.md`
+
 ### Documentation
 
 - **Integration Guide**: `services/OpenWebUi/INTEGRATION.md`
 - **Deployment Status**: `services/OpenWebUi/DEPLOYMENT_STATUS.md`
 - **Docker Config**: `services/OpenWebUi/docker-compose.yml`
+- **Telegram Bot**: `services/telegram-rag-bot/README.md`
 
 ## 📁 Output Structure
 
@@ -982,7 +1026,7 @@ MIT License - see LICENSE file for details
 
 ### v1.4.0 - OpenWebUI RAG Integration (January 2026)
 
-**Major Feature**: Added semantic search across all meeting transcripts via OpenWebUI + Qdrant.
+**Major Feature**: Added semantic search across all meeting transcripts via OpenWebUI + Qdrant, with Telegram bot interface.
 
 **Key Features:**
 - ✅ **Semantic Search** - Search meetings using natural language queries
@@ -994,10 +1038,11 @@ MIT License - see LICENSE file for details
 - ✅ **GPU Acceleration** - CUDA support for fast embedding (47s → 2-3s)
 - ✅ **Chrome Extension RAG Upload** - Manual upload button for meetings
 - ✅ **Automatic Indexing** - Processed meetings auto-indexed to Knowledge Base
+- ✅ **Telegram Bot** - 🆕 Search via Telegram with user whitelist and admin controls
 
 **Usage:**
 ```bash
-# Start services
+# Start OpenWebUI services
 cd services/OpenWebUi
 docker-compose up -d
 
@@ -1007,11 +1052,17 @@ OPENWEBUI_API_KEY=sk-...
 
 # Search in OpenWebUI (http://localhost:3000)
 #Meetings Что обсуждали по проекту?
+
+# Or search via Telegram Bot
+cd services/telegram-rag-bot
+python -m src.main
+# Then message the bot on Telegram
 ```
 
 **Documentation:**
 - Integration Guide: `services/OpenWebUi/INTEGRATION.md`
 - Docker Config: `services/OpenWebUi/docker-compose.yml`
+- Telegram Bot: `services/telegram-rag-bot/README.md`
 
 ### v1.3.0 - Speaker Recognition (November 2025)
 
@@ -1092,6 +1143,8 @@ ENABLE_SPEAKER_RECOGNITION=true
 
 **Status**: Production Ready ✅
 **Version**: 1.4.0
-**Last Updated**: January 2026
+**Last Updated**: February 2026
 
-**Latest Feature**: 🔍 OpenWebUI RAG - Semantic search across all meeting transcripts with GPU-accelerated embeddings!
+**Latest Features**:
+- 🔍 OpenWebUI RAG - Semantic search across all meeting transcripts with GPU-accelerated embeddings
+- 🤖 Telegram Bot - Search meetings via Telegram messenger with secure user whitelist

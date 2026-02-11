@@ -1,0 +1,51 @@
+{
+  "enabled": true,
+  "fallback_kb": "Meetings",
+  "mappings": {
+    "ГПБ": {
+      "kb_name": "GPB",
+      "full_name": "Газпромбанк",
+      "description": "Meeting transcripts for Gazprombank"
+    },
+    "ГАЗПРОМБАНК": {
+      "kb_name": "GPB",
+      "full_name": "Газпромбанк",
+      "description": "Meeting transcripts for Gazprombank"
+    },
+    "СОВКОМБАНК": {
+      "kb_name": "SOVKOMBANK",
+      "full_name": "Совкомбанк",
+      "description": "Meeting transcripts for Sovkombank"
+    },
+    "СБЕРБАНК": {
+      "kb_name": "SBERBANK",
+      "full_name": "Сбербанк",
+      "description": "Meeting transcripts for Sberbank"
+    },
+    "ВНУТР": {
+      "kb_name": "INTERNAL",
+      "full_name": "Внутренняя",
+      "description": "Meeting transcripts for Internal"
+    },
+    "СБЕР": {
+      "kb_name": "SBERBANK",
+      "full_name": "Сбербанк",
+      "description": "Meeting transcripts for Sberbank"
+    },
+    "ПСБ": {
+      "kb_name": "PSB",
+      "full_name": "ПСБанк",
+      "description": "Meeting transcripts for PSBank"
+    },
+    "PSBANK": {
+      "kb_name": "PSB",
+      "full_name": "ПСБанк",
+      "description": "Meeting transcripts for PSBank"
+    },
+        "DISCOVERY": {
+      "kb_name": "DISCOVERY",
+      "full_name": "DISCOVERY",
+      "description": "Meeting transcripts for DISCOVERY research"
+    }
+  }
+}

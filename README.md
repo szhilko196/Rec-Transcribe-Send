@@ -1,6 +1,6 @@
 # Rec-Transcribe-Send - Automated Meeting Transcription System
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.10-blue.svg)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0-red.svg)
@@ -36,6 +36,7 @@
 
 ### RAG Knowledge Base (v1.4.0)
 - **🔍 OpenWebUI RAG Search** - 🆕 semantic search across all meeting transcripts
+- **🏦 Bank-Specific Knowledge Bases** - 🆕 **v1.5.0** automatic organization by bank/client
 - **🧠 Hybrid Search** - combines BM25 keyword + semantic vector search
 - **📚 Qdrant Vector Database** - fast HNSW-indexed vector storage
 - **🎯 BGE-M3 Embeddings** - state-of-the-art multilingual embeddings (1024-dim)
@@ -711,6 +712,89 @@ This is useful when:
 - Verify OpenWebUI API key is set
 - Check orchestrator logs for upload errors
 
+### 🏦 Bank-Specific Knowledge Bases (v1.5.0)
+
+**NEW!** Automatically organize meetings into separate Knowledge Bases per bank/client for targeted search.
+
+#### How It Works
+
+The system extracts bank names from video filenames and creates dedicated Knowledge Bases:
+
+```
+Video: ГПБ_Архитектурные_вопросы.avi
+  ↓
+Result: ГПБ_Архитектурные_вопросы_20250115_143022/
+  ↓
+Bank detected: "ГПБ" → Knowledge Base "GPB"
+  ↓
+Query in OpenWebUI: #GPB What were the decisions?
+Query in Telegram: /kb GPB
+```
+
+#### Supported Banks (Preconfigured)
+
+- **ГПБ / ГАЗПРОМБАНК** → KB: `GPB` (Газпромбанк)
+- **СБЕРБАНК / СБЕР** → KB: `SBERBANK` (Сбербанк)
+- **ПСБ / PSBANK** → KB: `PSB` (ПСБанк)
+- **СОВКОМБАНК** → KB: `SOVKOMBANK` (Совкомбанк)
+- **ВНУТР** → KB: `INTERNAL` (Внутренняя)
+- **DISCOVERY** → KB: `DISCOVERY` (DISCOVERY research)
+- Videos without bank prefix → KB: `Meetings` (default)
+
+#### Usage Examples
+
+**OpenWebUI queries:**
+```
+#GPB What were the architectural decisions?
+#SBERBANK Show the project timeline
+#PSB List all action items
+#Meetings Search across all meetings
+```
+
+**Telegram bot:**
+```
+/kb                      # List available Knowledge Bases
+/kb GPB                  # Switch to GPB Knowledge Base
+What was discussed about CHARREF?
+```
+
+#### Configuration
+
+**Enable/disable in `.env`:**
+```env
+ENABLE_BANK_SPECIFIC_KBS=true
+```
+
+**Add new banks** in `services/OpenWebUi/scripts/bank_kb_mapping.json`:
+```json
+{
+  "АЛЬФАБАНК": {
+    "kb_name": "ALFABANK",
+    "full_name": "Альфа-Банк",
+    "description": "Meeting transcripts for Alfa Bank"
+  }
+}
+```
+
+No code changes required! Just add the mapping and process videos with the new prefix.
+
+#### Features
+
+- ✅ **Automatic detection** from video filenames
+- ✅ **Cyrillic → Latin** normalization (ГПБ → GPB)
+- ✅ **Multiple aliases** per bank (СБЕР/СБЕРБАНК → SBERBANK)
+- ✅ **Fallback to "Meetings"** for unknown banks
+- ✅ **Backward compatible** (existing meetings work unchanged)
+- ✅ **Telegram bot integration** (works automatically)
+- ✅ **Easy to add new banks** (no code changes)
+
+#### Documentation
+
+For detailed information, see:
+- **Quick Start**: `services/OpenWebUi/scripts/README_BANK_KB.md`
+- **Configuration**: `services/OpenWebUi/scripts/bank_kb_mapping.json`
+- **Implementation**: `IMPLEMENTATION_SUMMARY.md`
+
 ### Telegram Bot Integration
 
 The **Telegram RAG Bot** provides a convenient mobile interface for searching meetings via Telegram messenger.
@@ -1029,6 +1113,49 @@ MIT License - see LICENSE file for details
 ---
 
 ## 🆕 What's New
+
+### v1.5.0 - Bank-Specific Knowledge Bases (February 2026)
+
+**Major Feature**: Automatic organization of meetings into separate Knowledge Bases per bank/client for targeted semantic search.
+
+**Key Features:**
+- ✅ **Bank Auto-Detection** - Extracts bank name from video filename prefix
+- ✅ **Cyrillic → Latin Normalization** - ГПБ → GPB, СБЕРБАНК → SBERBANK
+- ✅ **Multiple Aliases** - СБЕР/СБЕРБАНК both map to SBERBANK KB
+- ✅ **Targeted Search** - Query specific bank meetings: `#GPB`, `#SBERBANK`, `#PSB`
+- ✅ **Telegram Bot Support** - `/kb GPB` to switch Knowledge Bases
+- ✅ **Easy Configuration** - Add new banks via JSON config (no code changes)
+- ✅ **Backward Compatible** - Existing "Meetings" KB preserved, feature can be disabled
+- ✅ **Fallback Behavior** - Unknown banks → default "Meetings" KB
+
+**Preconfigured Banks:**
+- ГПБ/ГАЗПРОМБАНК → KB: `GPB`
+- СБЕРБАНК/СБЕР → KB: `SBERBANK`
+- ПСБ/PSBANK → KB: `PSB`
+- СОВКОМБАНК → KB: `SOVKOMBANK`
+- ВНУТР → KB: `INTERNAL`
+- DISCOVERY → KB: `DISCOVERY`
+
+**Usage:**
+```bash
+# Enable in .env
+ENABLE_BANK_SPECIFIC_KBS=true
+
+# Process video with bank prefix
+cp ГПБ_meeting.avi data/input/
+
+# Query in OpenWebUI
+#GPB What were the architectural decisions?
+
+# Query via Telegram
+/kb GPB
+What was discussed about CHARREF?
+```
+
+**Documentation:**
+- Feature Guide: `services/OpenWebUi/scripts/README_BANK_KB.md`
+- Configuration: `services/OpenWebUi/scripts/bank_kb_mapping.json`
+- Implementation: `IMPLEMENTATION_SUMMARY.md`
 
 ### v1.4.0 - OpenWebUI RAG Integration (January 2026)
 

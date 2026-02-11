@@ -50,6 +50,8 @@ Data Flow: Email → Browser Join → Record → ./data/input/ → audio/ → tr
 - **SpeechBrain**: Speaker recognition with ECAPA-TDNN embeddings (optional)
 - **Claude API**: Document generation (summary.md, protocol.md)
 - **N8n**: Visual workflow orchestration (already installed on host)
+- **OpenWebUI + Qdrant**: RAG-based semantic search across meeting transcripts
+- **Telegram Bot**: Chat interface for querying meeting history via RAG
 
 ### Data Pipeline
 
@@ -165,6 +167,121 @@ cp config/.env.example .env
 # Edit .env with your credentials
 python src/main.py  # Run the service
 ```
+
+## Bank-Specific Knowledge Bases (v1.5.0)
+
+The system automatically organizes meeting transcripts into separate Knowledge Bases per bank, based on the video filename prefix. This enables targeted semantic search within a specific bank's meetings.
+
+### How It Works
+
+1. **Filename Pattern**: Video files should be named with bank prefix: `BANKNAME_Meeting_Description.avi`
+2. **Bank Detection**: The system extracts the bank name from the result folder name
+3. **KB Assignment**: Meetings are uploaded to bank-specific Knowledge Bases
+4. **Fallback**: Meetings without a recognized bank prefix go to the default "Meetings" KB
+
+### Examples
+
+```
+Video: ГПБ_Архитектурные_вопросы.avi
+  → Result folder: ГПБ_Архитектурные_вопросы_20250115_143022
+  → Knowledge Base: "GPB"
+  → Query in OpenWebUI: #GPB What were the architectural decisions?
+  → Query in Telegram: /kb GPB
+
+Video: СБЕРБАНК_Старт_работ_по_Сберу.avi
+  → Result folder: СБЕРБАНК_Старт_работ_по_Сберу_20250116_101530
+  → Knowledge Base: "SBERBANK"
+  → Query: #SBERBANK Show project timeline
+
+Video: meeting_without_bank.avi
+  → Result folder: meeting_without_bank_20250118_120000
+  → Knowledge Base: "Meetings" (fallback)
+  → Query: #Meetings General search
+```
+
+### Configuration
+
+**Bank mappings** are defined in `services/OpenWebUi/scripts/bank_kb_mapping.json`:
+
+```json
+{
+  "enabled": true,
+  "fallback_kb": "Meetings",
+  "mappings": {
+    "ГПБ": {
+      "kb_name": "GPB",
+      "full_name": "Газпромбанк",
+      "description": "Meeting transcripts for Gazprombank"
+    },
+    "СБЕРБАНК": {
+      "kb_name": "SBERBANK",
+      "full_name": "Сбербанк",
+      "description": "Meeting transcripts for Sberbank"
+    }
+  }
+}
+```
+
+**Features**:
+- Multiple aliases map to same KB (ГПБ/ГАЗПРОМБАНК → GPB)
+- Case-insensitive matching (гпб → GPB)
+- Custom descriptions per bank
+- Easy to add new banks without code changes
+
+### Environment Variables
+
+```env
+# Enable/disable bank-specific KBs
+ENABLE_BANK_SPECIFIC_KBS=true
+```
+
+Set to `false` to disable the feature and use the default "Meetings" KB for all meetings.
+
+### Testing
+
+```bash
+# Run unit tests
+cd services/OpenWebUi/scripts
+python test_bank_kb_resolver.py
+
+# Run integration tests
+python test_bank_integration.py
+
+# Dry-run test (simulates uploader without OpenWebUI)
+python test_uploader_dryrun.py
+```
+
+### Adding New Banks
+
+1. Edit `services/OpenWebUi/scripts/bank_kb_mapping.json`
+2. Add new entry:
+```json
+"АЛЬФАБАНК": {
+  "kb_name": "ALFABANK",
+  "full_name": "Альфа-Банк",
+  "description": "Meeting transcripts for Alfa Bank"
+}
+```
+3. No code changes required!
+4. Process a video with the new prefix: `АЛЬФАБАНК_meeting.avi`
+
+### Telegram Bot Support
+
+The Telegram RAG bot automatically lists all available Knowledge Bases:
+
+```
+/kb                      # List all KBs
+/kb GPB                  # Search GPB KB
+/kb SBERBANK             # Search SBERBANK KB
+/kb Meetings             # Search default KB
+```
+
+### Backward Compatibility
+
+- Existing "Meetings" KB is preserved
+- Old meetings without bank prefix continue using "Meetings"
+- Feature can be disabled via environment variable
+- No breaking changes to existing workflows
 
 ## Speaker Recognition Setup
 
@@ -464,6 +581,11 @@ MAC_ENABLE_AUTO_PROCESSING=true       # Trigger orchestrator automatically
 MAC_API_PORT=8004
 MAC_LOG_LEVEL=info
 MAC_ENABLE_API=false                  # Enable FastAPI server
+
+# OpenWebUI RAG - Knowledge Base Configuration (v1.5.0)
+ENABLE_BANK_SPECIFIC_KBS=true         # Organize meetings into bank-specific KBs
+                                       # Example: "ГПБ_meeting.avi" → KB "GPB"
+                                       # Config: services/OpenWebUi/scripts/bank_kb_mapping.json
 
 # Email Delivery (Optional)
 SMTP_SERVER=smtp.gmail.com

@@ -35,13 +35,25 @@ sys.path.append(str(SCRIPT_DIR))
 
 from contextual_enrichment import ContextualEnricher
 from openwebui_client import OpenWebUIClient
+from bank_kb_resolver import BankKBResolver
 
 
 # Configuration from environment variables
 OPENWEBUI_URL = os.getenv("OPENWEBUI_URL", "http://localhost:3000")
 OPENWEBUI_API_KEY = os.getenv("OPENWEBUI_API_KEY")
 ENABLE_CONTEXTUAL_RETRIEVAL = os.getenv("ENABLE_CONTEXTUAL_RETRIEVAL", "true").lower() == "true"
-SHARED_KB_NAME = "Meetings"
+ENABLE_BANK_SPECIFIC_KBS = os.getenv("ENABLE_BANK_SPECIFIC_KBS", "true").lower() == "true"
+
+# Initialize bank KB resolver
+try:
+    BANK_KB_RESOLVER = BankKBResolver()
+    BANK_KB_ENABLED = BANK_KB_RESOLVER.is_enabled() and ENABLE_BANK_SPECIFIC_KBS
+except Exception as e:
+    print(f"[WARNING] Bank KB resolver disabled: {e}")
+    BANK_KB_RESOLVER = None
+    BANK_KB_ENABLED = False
+
+DEFAULT_KB_NAME = "Meetings"
 
 # Chunking configuration
 TRANSCRIPT_SIZE_THRESHOLD_KB = 50  # Chunk if file larger than this
@@ -216,6 +228,34 @@ Speakers: {num_speakers}
     return chunk_files
 
 
+def resolve_knowledge_base(result_folder: Path) -> tuple:
+    """
+    Resolve Knowledge Base name from result folder.
+
+    Args:
+        result_folder: Path to meeting result folder
+
+    Returns:
+        Tuple of (kb_name, bank_info_dict)
+        - kb_name: Knowledge Base name (e.g., "GPB", "Meetings")
+        - bank_info: Bank information dict (or empty dict if no bank detected)
+    """
+
+    if not BANK_KB_ENABLED or not BANK_KB_RESOLVER:
+        return DEFAULT_KB_NAME, {}
+
+    # Extract KB name from folder name
+    folder_name = result_folder.name
+    kb_name, bank_info = BANK_KB_RESOLVER.resolve_kb_name(folder_name)
+
+    if bank_info:
+        print(f"[INFO] Bank detected: {bank_info.get('full_name')} → KB: '{kb_name}'")
+    else:
+        print(f"[INFO] No bank prefix detected → Using default KB: '{kb_name}'")
+
+    return kb_name, bank_info
+
+
 def upload_meeting_to_openwebui(result_folder: Path) -> bool:
     """
     Upload meeting files to OpenWebUI Knowledge Base
@@ -251,8 +291,18 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
     print(f"    - Summary: {summary_file.name}")
     print(f"    - Protocol: {protocol_file.name}")
 
-    # Step 2: Check OpenWebUI availability
-    print("\n[Step 2/6] Checking OpenWebUI API...")
+    # Step 2: Resolve Knowledge Base from folder name
+    print("\n[Step 2/7] Resolving Knowledge Base...")
+
+    kb_name, bank_info = resolve_knowledge_base(result_folder)
+    print(f"[✓] Knowledge Base resolved: '{kb_name}'")
+
+    if bank_info:
+        print(f"    - Bank: {bank_info.get('full_name')}")
+        print(f"    - Description: {bank_info.get('description')}")
+
+    # Step 3: Check OpenWebUI availability
+    print("\n[Step 3/7] Checking OpenWebUI API...")
 
     if not OPENWEBUI_API_KEY:
         print("[ERROR] OPENWEBUI_API_KEY environment variable not set")
@@ -269,11 +319,11 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
 
     print(f"[✓] OpenWebUI API accessible at {OPENWEBUI_URL}")
 
-    # Step 3: Apply contextual enrichment (if enabled)
+    # Step 4: Apply contextual enrichment (if enabled)
     enriched_folder = None
 
     if ENABLE_CONTEXTUAL_RETRIEVAL:
-        print("\n[Step 3/6] Applying Contextual Retrieval enrichment...")
+        print("\n[Step 4/7] Applying Contextual Retrieval enrichment...")
 
         # Check if enriched files already exist
         enriched_folder = result_folder / "enriched"
@@ -306,45 +356,53 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
                 print("[INFO] Falling back to original files (without context)")
                 # Continue with original files
     else:
-        print("\n[Step 3/6] Contextual enrichment disabled (using original files)")
+        print("\n[Step 4/7] Contextual enrichment disabled (using original files)")
 
-    # Step 4: Get or create shared Knowledge Base
-    print(f"\n[Step 4/6] Setting up Knowledge Base...")
-    print(f"[INFO] Looking for Knowledge Base: '{SHARED_KB_NAME}'")
+    # Step 5: Get or create Knowledge Base
+    print(f"\n[Step 5/7] Setting up Knowledge Base...")
+    print(f"[INFO] Looking for Knowledge Base: '{kb_name}'")
 
-    kb = client.get_knowledge_base_by_name(SHARED_KB_NAME)
+    kb = client.get_knowledge_base_by_name(kb_name)
 
     if kb and kb.get('write_access', False):
         kb_id = kb['id']
-        print(f"[✓] Found existing Knowledge Base: '{SHARED_KB_NAME}'")
+        print(f"[✓] Found existing Knowledge Base: '{kb_name}'")
         print(f"    ID: {kb_id}")
     elif kb and not kb.get('write_access', False):
-        print(f"[INFO] Found KB '{SHARED_KB_NAME}' but no write access, creating new one...")
+        print(f"[INFO] Found KB '{kb_name}' but no write access, creating new one...")
         try:
+            # Use bank-specific description if available
+            description = bank_info.get('description',
+                "Semantic search across all meeting transcriptions with contextual enrichment")
+
             kb_id = client.create_knowledge_base(
-                name=SHARED_KB_NAME,
-                description="Semantic search across all meeting transcriptions with contextual enrichment"
+                name=kb_name,
+                description=description
             )
-            print(f"[✓] Created new Knowledge Base: '{SHARED_KB_NAME}'")
+            print(f"[✓] Created new Knowledge Base: '{kb_name}'")
             print(f"    ID: {kb_id}")
         except Exception as e:
             print(f"[ERROR] Failed to create Knowledge Base: {e}")
             return False
     else:
-        print(f"[INFO] Creating new Knowledge Base: '{SHARED_KB_NAME}'")
+        print(f"[INFO] Creating new Knowledge Base: '{kb_name}'")
         try:
+            # Use bank-specific description if available
+            description = bank_info.get('description',
+                "Semantic search across all meeting transcriptions with contextual enrichment")
+
             kb_id = client.create_knowledge_base(
-                name=SHARED_KB_NAME,
-                description="Semantic search across all meeting transcriptions with contextual enrichment"
+                name=kb_name,
+                description=description
             )
-            print(f"[✓] Created Knowledge Base: '{SHARED_KB_NAME}'")
+            print(f"[✓] Created Knowledge Base: '{kb_name}'")
             print(f"    ID: {kb_id}")
         except Exception as e:
             print(f"[ERROR] Failed to create Knowledge Base: {e}")
             return False
 
-    # Step 5: Upload files
-    print(f"\n[Step 5/6] Uploading files to OpenWebUI...")
+    # Step 6: Upload files
+    print(f"\n[Step 6/7] Uploading files to OpenWebUI...")
 
     uploaded_files = []
 
@@ -407,7 +465,7 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
         return False
 
     # Step 6: Update metadata.json
-    print(f"\n[Step 6/6] Updating metadata...")
+    print(f"\n[Step 7/7] Updating metadata...")
 
     metadata_file = result_folder / "metadata.json"
 
@@ -420,9 +478,15 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
             metadata['openwebui_rag_indexed'] = True
             metadata['openwebui_indexed_at'] = datetime.utcnow().isoformat()
             metadata['openwebui_knowledge_base_id'] = kb_id
-            metadata['openwebui_knowledge_base_name'] = SHARED_KB_NAME
+            metadata['openwebui_knowledge_base_name'] = kb_name
             metadata['openwebui_files'] = uploaded_files
             metadata['contextual_enrichment_applied'] = ENABLE_CONTEXTUAL_RETRIEVAL
+
+            # Add bank information if detected
+            if bank_info:
+                metadata['bank_name'] = bank_info.get('kb_name')
+                metadata['bank_full_name'] = bank_info.get('full_name')
+                metadata['bank_detected_from'] = 'folder_name'
 
             with open(metadata_file, 'w', encoding='utf-8') as f:
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
@@ -440,14 +504,16 @@ def upload_meeting_to_openwebui(result_folder: Path) -> bool:
     print(f"[✓] Upload completed successfully!")
     print(f"{'='*60}")
     print(f"\nSummary:")
-    print(f"  Knowledge Base: {SHARED_KB_NAME}")
+    print(f"  Knowledge Base: {kb_name}")
+    if bank_info:
+        print(f"  Bank: {bank_info.get('full_name')}")
     print(f"  Files uploaded: {len(uploaded_files)}")
     for file_info in uploaded_files:
         print(f"    - {file_info['type']}: {file_info['filename']}")
     print(f"  Contextual enrichment: {'Enabled' if ENABLE_CONTEXTUAL_RETRIEVAL else 'Disabled'}")
     print(f"\nQuery this meeting in OpenWebUI UI:")
     print(f"  1. Open: {OPENWEBUI_URL}")
-    print(f"  2. In chat, type: #Meetings")
+    print(f"  2. In chat, type: #{kb_name}")
     print(f"  3. Ask questions about: {result_folder.name}")
     print()
 

@@ -1,6 +1,6 @@
 # Rec-Transcribe-Send - Automated Meeting Transcription System
 
-![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.5.1-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.10-blue.svg)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0-red.svg)
@@ -844,6 +844,51 @@ Bot: [Ответ с цитатами из встреч и ссылками на 
 - **Docker Config**: `services/OpenWebUi/docker-compose.yml`
 - **Telegram Bot**: `services/telegram-rag-bot/README.md`
 
+### FileToRag - Markdown to Knowledge Base (Optional)
+
+**NEW!** Upload any markdown files to OpenWebUI Knowledge Base for RAG search. Perfect for documentation, notes, or any text content you want to search semantically.
+
+**Features:**
+- 📁 **Folder Monitoring** - Watches `data/FileToRag/` for new `.md` files
+- 📄 **Smart Chunking** - Splits by H2 headers or by lines (configurable)
+- ⚡ **Parallel Uploads** - 4 workers by default for fast processing
+- 🔍 **Duplicate Detection** - Tracks processed files by SHA256 hash
+- 🔄 **Auto-retry** - Exponential backoff on failures
+
+**Quick Start:**
+```bash
+# 1. Start OpenWebUI (if not running)
+cd services/OpenWebUi && docker-compose up -d
+
+# 2. Get API key from OpenWebUI: Settings > Account > API Keys
+
+# 3. Configure and run
+start_file-to-rag.bat
+# Edit .env with your OPENWEBUI_API_KEY
+
+# 4. Copy markdown files to data/FileToRag/
+cp your_document.md data/FileToRag/
+
+# 5. Search in OpenWebUI
+#MyFiles What is this document about?
+```
+
+**Configuration** (in `services/file-to-rag/.env`):
+```env
+OPENWEBUI_URL=http://localhost:3000
+OPENWEBUI_API_KEY=your-api-key
+FILETORAG_KB_NAME=MyFiles
+FILETORAG_PARALLEL_UPLOADS=4      # Parallel workers (higher = faster)
+FILETORAG_CHUNK_BY_HEADERS=true   # Split by ## headers
+FILETORAG_CHUNK_SIZE_LINES=150    # Max lines per chunk
+```
+
+**Performance:**
+- 90 chunks with 4 workers ≈ 2-3 minutes
+- GPU stays busy with parallel uploads
+
+**Documentation:** `services/file-to-rag/README.md`
+
 ## 📁 Output Structure
 
 Results are saved in `data/results/<source_name>_<timestamp>/`:
@@ -1114,6 +1159,32 @@ MIT License - see LICENSE file for details
 
 ## 🆕 What's New
 
+### v1.5.1 - FileToRag Service (February 2026)
+
+**New Module**: Upload any markdown files to OpenWebUI Knowledge Base for semantic search.
+
+**Key Features:**
+- ✅ **Folder Monitoring** - Watches `data/FileToRag/` for new `.md` files
+- ✅ **Smart Chunking** - Splits by H2 headers preserving context
+- ✅ **Parallel Uploads** - 4 workers by default (configurable)
+- ✅ **Fast Processing** - 90 chunks in 2-3 minutes with GPU
+- ✅ **Duplicate Detection** - SHA256 hash tracking
+- ✅ **Auto-retry** - Exponential backoff on failures
+
+**Usage:**
+```bash
+# Start the service
+start_file-to-rag.bat
+
+# Copy markdown files
+cp documentation.md data/FileToRag/
+
+# Search in OpenWebUI
+#MyFiles What does this document explain?
+```
+
+**Documentation:** `services/file-to-rag/README.md`
+
 ### v1.5.0 - Bank-Specific Knowledge Bases (February 2026)
 
 **Major Feature**: Automatic organization of meetings into separate Knowledge Bases per bank/client for targeted semantic search.
@@ -1275,9 +1346,11 @@ ENABLE_SPEAKER_RECOGNITION=true
 ---
 
 **Status**: Production Ready ✅
-**Version**: 1.4.0
+**Version**: 1.5.1
 **Last Updated**: February 2026
 
 **Latest Features**:
-- 🔍 OpenWebUI RAG - Semantic search across all meeting transcripts with GPU-accelerated embeddings
-- 🤖 Telegram Bot - Search meetings via Telegram messenger with secure user whitelist
+- 📄 FileToRag - Upload markdown files to Knowledge Base with parallel processing
+- 🏦 Bank-Specific KBs - Automatic organization by bank/client
+- 🔍 OpenWebUI RAG - Semantic search across all meeting transcripts
+- 🤖 Telegram Bot - Search meetings via Telegram messenger

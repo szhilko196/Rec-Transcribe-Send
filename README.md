@@ -19,7 +19,8 @@
 - **🚫 No Recording Indicator** - Browser doesn't show recording badge on screen
 
 ### Core Processing
-- **🎵 Audio Extraction** from video files (FFmpeg)
+- **🎵 Audio Extraction** from video files, or conversion from audio files (FFmpeg)
+- **🎧 Direct Audio Support** - process .wav, .mp3, .m4a, .ogg, .flac, .aac, .wma without video
 - **📝 Speech Transcription** with Russian language support (Faster-Whisper)
 - **🎤 Speaker Diarization** (pyannote.audio)
 - **🎭 Speaker Recognition** - 🆕 identify known speakers by voice (SpeechBrain ECAPA-TDNN)
@@ -205,11 +206,16 @@ flowchart TB
    python services/transcription_orchestrator/watch_input_folder.py
    ```
 
-5. **Add video file**
+5. **Add video or audio file**
    ```bash
-   # Simply copy video to input folder
+   # Simply copy video or audio to input folder
    cp your_meeting.mp4 data/input/
+   cp your_recording.mp3 data/input/
    ```
+
+   Supported formats:
+   - **Video**: .mp4, .avi, .mov, .mkv, .webm, .flv, .wmv
+   - **Audio**: .wav, .m4a, .mp3, .ogg, .flac, .aac, .wma
 
    The system will automatically process the file and create results in `data/results/`
 
@@ -756,12 +762,12 @@ Bot: [Ответ с цитатами из встреч и ссылками на 
 
 ## 📁 Output Structure
 
-Results are saved in `data/results/<video_name>_<timestamp>/`:
+Results are saved in `data/results/<source_name>_<timestamp>/`:
 
 ```
 meeting_2025-01-29_<timestamp>/
-├── original_meeting.mp4        # Original video
-├── audio.wav                   # Extracted audio (16kHz, mono)
+├── original_meeting.mp4        # Original source file (video or audio)
+├── audio.wav                   # Extracted/converted audio (16kHz, mono)
 ├── transcript_full.json        # Full transcription with timestamps and speaker names
 ├── transcript_readable.txt     # Human-readable format
 ├── summary.md                  # Meeting summary (Claude AI)

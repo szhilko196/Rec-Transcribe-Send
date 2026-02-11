@@ -1,14 +1,18 @@
 """
-Orchestrator for full meeting video processing cycle
+Orchestrator for full meeting media processing cycle
 
 This script:
 1. Creates structured results folder
-2. Extracts audio from video
+2. Extracts/converts audio from video or audio files
 3. Performs transcription with diarization
 4. (Optional) Applies speaker recognition to identify known speakers
 5. Organizes all files in one folder
 6. Calls Claude API to generate summary and protocol
 7. (Optional) Sends results via email
+
+Supported input formats:
+  Video: .mp4, .avi, .mov, .mkv, .webm, .flv, .wmv
+  Audio: .wav, .m4a, .mp3, .ogg, .flac, .aac, .wma
 """
 
 import json
@@ -92,6 +96,15 @@ OPENWEBUI_UPLOADER_SCRIPT = ROOT_DIR / "services" / "OpenWebUi" / "scripts" / "o
 # Conditional RAG indexing based on speaker recognition
 # If unrecognized speakers count exceeds this threshold, RAG upload is skipped
 MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG = int(os.getenv("MAX_UNRECOGNIZED_SPEAKERS_FOR_RAG", "2"))
+
+# Supported file extensions
+VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv'}
+AUDIO_EXTENSIONS = {'.wav', '.m4a', '.mp3', '.ogg', '.flac', '.aac', '.wma'}
+
+
+def is_audio_file(file_path: Path) -> bool:
+    """Check if the file is a standalone audio file (not video)"""
+    return file_path.suffix.lower() in AUDIO_EXTENSIONS
 
 
 def run_curl(url: str, method: str = "POST", data_file: str = None,
@@ -339,25 +352,30 @@ def create_result_folder(video_path: Path) -> Path:
     return result_folder
 
 
-def extract_audio(video_path: Path, result_folder: Path) -> Dict:
+def extract_audio(media_path: Path, result_folder: Path) -> Dict:
     """
-    Extract audio from video via FFmpeg Service
+    Extract/convert audio from video or audio file via FFmpeg Service
 
     Args:
-        video_path: Path to video file
+        media_path: Path to video or audio file
         result_folder: Folder to save results (will be created if extraction succeeds)
 
     Returns:
         Information about extracted audio
     """
-    print(f"\n[STEP 1] Extracting audio from video...")
-    print(f"  Video: {video_path.name}")
+    input_is_audio = is_audio_file(media_path)
+    if input_is_audio:
+        print(f"\n[STEP 1] Converting audio to 16kHz mono WAV...")
+        print(f"  Audio: {media_path.name}")
+    else:
+        print(f"\n[STEP 1] Extracting audio from video...")
+        print(f"  Video: {media_path.name}")
 
     # Call FFmpeg Service via curl
     result = run_curl(
         f"{FFMPEG_SERVICE_URL}/extract-audio",
         method="POST",
-        data_file=str(video_path),
+        data_file=str(media_path),
         field_name="file",
         timeout=300
     )
@@ -1622,20 +1640,21 @@ Format: structured text with headings and lists."""
     }
 
 
-def organize_files(video_path: Path, result_folder: Path):
+def organize_files(media_path: Path, result_folder: Path):
     """
-    Copy source video to results folder
+    Copy source media file to results folder
 
     Args:
-        video_path: Path to source video
+        media_path: Path to source video or audio file
         result_folder: Results folder
     """
     print(f"\n[STEP 4] Organizing files...")
 
-    dest_video = result_folder / f"original_{video_path.name}"
-    shutil.copy2(video_path, dest_video)
+    dest_file = result_folder / f"original_{media_path.name}"
+    shutil.copy2(media_path, dest_file)
 
-    print(f"[OK] Video copied: {dest_video.name}")
+    file_type = "Audio" if is_audio_file(media_path) else "Video"
+    print(f"[OK] {file_type} copied: {dest_file.name}")
 
 
 def upload_to_openwebui(result_folder: Path) -> bool:
@@ -1743,30 +1762,33 @@ python services/OpenWebUi/scripts/openwebui_uploader.py "{result_folder}"
     return marker_path
 
 
-def main(video_path_str: str) -> Dict:
+def main(media_path_str: str) -> Dict:
     """
     Main orchestrator function
 
     Args:
-        video_path_str: Path to video file
+        media_path_str: Path to video or audio file
 
     Returns:
         Dictionary with results information
     """
     print("=" * 80)
-    print("ORCHESTRATOR: FULL MEETING VIDEO PROCESSING CYCLE")
+    print("ORCHESTRATOR: FULL MEETING MEDIA PROCESSING CYCLE")
     print("=" * 80)
 
-    video_path = Path(video_path_str)
+    media_path = Path(media_path_str)
 
-    if not video_path.exists():
-        raise FileNotFoundError(f"Video file not found: {video_path}")
+    if not media_path.exists():
+        raise FileNotFoundError(f"Media file not found: {media_path}")
 
-    # Check file size (max 500 MB)
-    file_size_mb = video_path.stat().st_size / (1024*1024)
-    MAX_FILE_SIZE_MB = 500
+    input_is_audio = is_audio_file(media_path)
 
-    print(f"\nSource video: {video_path.name}")
+    # Check file size (max 2 GB)
+    file_size_mb = media_path.stat().st_size / (1024*1024)
+    MAX_FILE_SIZE_MB = 2048
+
+    source_type = "audio" if input_is_audio else "video"
+    print(f"\nSource {source_type}: {media_path.name}")
     print(f"Size: {file_size_mb:.2f} MB")
 
     if file_size_mb > MAX_FILE_SIZE_MB:
@@ -1788,12 +1810,12 @@ def main(video_path_str: str) -> Dict:
     result_folder = None
 
     # Step 1: Extract audio (this will create the results folder)
-    video_name = video_path.stem
+    media_name = media_path.stem
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    folder_name = f"{video_name}_{timestamp}"
+    folder_name = f"{media_name}_{timestamp}"
     result_folder = RESULTS_DIR / folder_name
 
-    audio_info = extract_audio(video_path, result_folder)
+    audio_info = extract_audio(media_path, result_folder)
 
     # Step 2: Transcription with diarization
     transcript_info = transcribe_with_speakers(
@@ -1821,8 +1843,8 @@ def main(video_path_str: str) -> Dict:
         result_folder
     )
 
-    # Step 4: Copy source video
-    organize_files(video_path, result_folder)
+    # Step 4: Copy source media file
+    organize_files(media_path, result_folder)
 
     # Step 4.5: Upload to OpenWebUI (if enabled)
     openwebui_rag_indexed = False
@@ -1872,7 +1894,7 @@ def main(video_path_str: str) -> Dict:
     print("=" * 80)
     print(f"\nResults folder: {result_folder}")
     print(f"\nCreated files:")
-    print(f"  - original_{video_path.name} (source video)")
+    print(f"  - original_{media_path.name} (source {source_type})")
     print(f"  - audio.wav (extracted audio)")
     print(f"  - transcript_full.json (full transcription)")
     print(f"  - transcript_readable.txt (readable format)")
@@ -1883,13 +1905,15 @@ def main(video_path_str: str) -> Dict:
     result = {
         "status": "success",
         "result_folder": str(result_folder),
-        "video_name": video_path.name,
+        "source_file": media_path.name,
+        "source_type": source_type,
+        "video_name": media_path.name,
         "duration": audio_info.get('duration', 0),
         "num_segments": transcript_info.get('result', {}).get('num_segments', 0),
         "num_speakers": transcript_info.get('result', {}).get('num_speakers', 0),
         "processing_time": transcript_info.get('result', {}).get('processing_time', 0),
         "files": {
-            "video": str(result_folder / f"original_{video_path.name}"),
+            "source": str(result_folder / f"original_{media_path.name}"),
             "audio": str(result_folder / "audio.wav"),
             "transcript_json": str(result_folder / "transcript_full.json"),
             "transcript_txt": str(result_folder / "transcript_readable.txt"),
@@ -1910,7 +1934,7 @@ def main(video_path_str: str) -> Dict:
     print("\n[OK] All files saved in one folder!")
 
     # Step 5: Send email (if email found in filename)
-    recipient_email = extract_email_from_filename(video_path.name)
+    recipient_email = extract_email_from_filename(media_path.name)
     email_sent = False
 
     if recipient_email:
@@ -1921,7 +1945,7 @@ def main(video_path_str: str) -> Dict:
 
         if smtp_config and claude_info:
             # Create email subject
-            email_subject = f"Meeting Protocol: {video_path.stem}"
+            email_subject = f"Meeting Protocol: {media_path.stem}"
 
             # Send email
             email_sent = send_email_with_results(
@@ -1957,13 +1981,13 @@ def main(video_path_str: str) -> Dict:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python orchestrator.py <path_to_video>")
+        print("Usage: python orchestrator.py <path_to_video_or_audio>")
         sys.exit(1)
 
-    video_path = sys.argv[1]
+    media_path = sys.argv[1]
 
     try:
-        result = main(video_path)
+        result = main(media_path)
         print(f"\nResult: {json.dumps(result, ensure_ascii=False, indent=2)}")
     except Exception as e:
         print(f"\n[ERROR] Processing error: {e}")

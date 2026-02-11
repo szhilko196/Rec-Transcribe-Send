@@ -1,8 +1,8 @@
 """
-Automatic monitoring of input folder for processing new videos
+Automatic monitoring of input folder for processing new media files
 
 This script:
-1. Monitors for new video files in data/input/
+1. Monitors for new video and audio files in data/input/
 2. Automatically launches orchestrator.py for processing
 3. Maintains database of processed files (to avoid duplicate processing)
 4. Logs all operations
@@ -51,7 +51,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Processing configuration
-SUPPORTED_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv'}
+VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv'}
+AUDIO_EXTENSIONS = {'.wav', '.m4a', '.mp3', '.ogg', '.flac', '.aac', '.wma'}
+SUPPORTED_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 ORCHESTRATOR_SCRIPT = Path("services/transcription_orchestrator/orchestrator.py")
 
 # File stabilization timeout (seconds) - wait until file is fully copied
@@ -186,7 +188,8 @@ class VideoFileHandler(FileSystemEventHandler):
             logger.info(f"Ignoring Yandex.Disk temporary file: {file_path.name}")
             return
 
-        logger.info(f"Detected new video file: {file_path.name}")
+        file_type = "audio" if file_path.suffix.lower() in AUDIO_EXTENSIONS else "video"
+        logger.info(f"Detected new {file_type} file: {file_path.name}")
 
         # Avoid duplicate processing
         if str(file_path) in self.processing_files:
@@ -353,13 +356,13 @@ def scan_existing_files(db: ProcessedVideosDB, handler: VideoFileHandler):
         logger.warning(f"Folder {INPUT_DIR} does not exist")
         return
 
-    video_files = []
+    media_files = []
     for ext in SUPPORTED_EXTENSIONS:
-        video_files.extend(INPUT_DIR.glob(f"*{ext}"))
+        media_files.extend(INPUT_DIR.glob(f"*{ext}"))
 
-    logger.info(f"Found video files: {len(video_files)}")
+    logger.info(f"Found media files: {len(media_files)}")
 
-    for file_path in video_files:
+    for file_path in media_files:
         # Check that file exists (may disappear during scanning)
         if not file_path.exists():
             logger.warning(f"File {file_path.name} disappeared during scanning, skipping")

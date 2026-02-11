@@ -1,11 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
 REM ================================================================================
-REM Automatic Meeting Video Processor
+REM Automatic Meeting Media Processor
 REM ================================================================================
 REM
 REM This script starts automatic monitoring of the input/ folder
-REM to process new video files.
+REM to process new video and audio files.
 REM
 REM The path to the data folder is configured via DATA_PATH variable in .env file.
 REM Default is ./data
@@ -13,7 +13,7 @@ REM
 
 echo.
 echo ================================================================================
-echo           AUTOMATIC MEETING VIDEO PROCESSOR
+echo           AUTOMATIC MEETING MEDIA PROCESSOR
 echo ================================================================================
 echo.
 echo Checking environment...
@@ -138,6 +138,8 @@ echo Starting automatic monitoring...
 echo ================================================================================
 echo.
 echo Monitoring folder: !DATA_PATH!\input
+echo Supported video: .mp4 .avi .mov .mkv .webm .flv .wmv
+echo Supported audio: .wav .m4a .mp3 .ogg .flac .aac .wma
 echo Logs: !DATA_PATH!\video_processor.log
 echo Database: !DATA_PATH!\processed_videos.json
 echo.

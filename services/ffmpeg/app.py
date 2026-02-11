@@ -1,11 +1,12 @@
 """
-FFmpeg Service - Audio extraction from video files
+FFmpeg Service - Audio extraction from video and audio files
 
-This microservice accepts video files (.avi) and extracts audio
-in WAV format (16kHz, mono, PCM) for subsequent transcription.
+This microservice accepts video files (.avi, .mp4, .mov, etc.) and audio files
+(.wav, .m4a, .mp3, .ogg, .flac, .aac, .wma) and converts them to WAV format
+(16kHz, mono, PCM) for subsequent transcription.
 
 Endpoints:
-    POST /extract-audio - Extract audio from video file
+    POST /extract-audio - Extract/convert audio from video or audio file
     GET /health - Health check for monitoring
 """
 
@@ -33,8 +34,8 @@ logger = logging.getLogger(__name__)
 # FastAPI initialization
 app = FastAPI(
     title="FFmpeg Audio Extraction Service",
-    description="Service for extracting audio from video files",
-    version="1.0.0"
+    description="Service for extracting audio from video and audio files",
+    version="1.1.0"
 )
 
 # Path configuration
@@ -213,7 +214,7 @@ async def health_check():
 
 @app.post("/extract-audio", response_model=AudioExtractionResponse)
 async def extract_audio(
-    file: UploadFile = File(..., description="Video file (.avi, .mp4, .mov, etc.)")
+    file: UploadFile = File(..., description="Video or audio file (.avi, .mp4, .mov, .wav, .mp3, .m4a, etc.)")
 ):
     """
     Extract audio from video file
@@ -239,7 +240,8 @@ async def extract_audio(
         raise HTTPException(status_code=400, detail="Filename not specified")
 
     # Extension check (optional, FFmpeg can handle many formats)
-    allowed_extensions = {'.avi', '.mp4', '.mov', '.mkv', '.flv', '.wmv', '.webm'}
+    audio_extensions = {'.wav', '.m4a', '.mp3', '.ogg', '.flac', '.aac', '.wma'}
+    allowed_extensions = {'.avi', '.mp4', '.mov', '.mkv', '.flv', '.wmv', '.webm'} | audio_extensions
     file_ext = Path(file.filename).suffix.lower()
 
     if file_ext not in allowed_extensions:
@@ -341,10 +343,14 @@ async def root():
     """
     return {
         "service": "FFmpeg Audio Extraction Service",
-        "version": "1.0.0",
-        "description": "Audio extraction from video files for transcription",
+        "version": "1.1.0",
+        "description": "Audio extraction/conversion from video and audio files for transcription",
+        "supported_formats": {
+            "video": [".avi", ".mp4", ".mov", ".mkv", ".flv", ".wmv", ".webm"],
+            "audio": [".wav", ".m4a", ".mp3", ".ogg", ".flac", ".aac", ".wma"]
+        },
         "endpoints": {
-            "POST /extract-audio": "Extract audio from video file",
+            "POST /extract-audio": "Extract/convert audio from video or audio file",
             "GET /health": "Service health check",
             "GET /docs": "Swagger UI documentation",
             "GET /redoc": "ReDoc documentation"
